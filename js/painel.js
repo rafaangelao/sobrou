@@ -1644,22 +1644,15 @@ function ligarRapido(){
 }
 
 /* ================================ LOGIN ================================= */
-let emailPendente = "";
+/* volta do link do e-mail: o supabase-js lê o #access_token e limpa o endereço */
+const veioDoLink = /access_token=/.test(location.hash);
+const erroDoLink = /error_code=([\w-]+)/.exec(location.hash)?.[1] || "";
 
 function mostrarEntrar(){
   $("#entrar").classList.remove("oculto");
-  setTimeout(() => (emailPendente ? $("#e-codigo") : $("#e-email")).focus(), 40);
+  setTimeout(() => $("#e-email").focus(), 40);
 }
 function esconderEntrar(){ $("#entrar").classList.add("oculto"); }
-
-function voltarPraEmail(){
-  emailPendente = "";
-  $("#e-email").disabled = false;
-  $("#bloco-codigo").classList.add("oculto");
-  $("#e-outro").classList.add("oculto");
-  $("#e-codigo").value = "";
-  $("#e-ok").textContent = "Mandar código";
-}
 
 async function entrou(u){
   usuario = u;
@@ -1671,38 +1664,27 @@ async function entrou(u){
 
 function ligarEntrar(){
   const msg = $("#entrar-msg"), ok = $("#e-ok");
+  if (erroDoLink){
+    msg.textContent = erroDoLink === "otp_expired"
+      ? "Esse link já venceu ou já foi usado. Peça outro abaixo."
+      : "Não deu pra entrar com esse link. Peça outro abaixo.";
+    history.replaceState(null, "", location.pathname + location.search);
+  }
   $("#form-entrar").addEventListener("submit", async ev => {
     ev.preventDefault();
+    const email = $("#e-email").value.trim();
+    if (!/^\S+@\S+\.\S+$/.test(email)){ msg.textContent = "Confira o e-mail."; return; }
     ok.disabled = true;
     try {
-      if (!emailPendente){
-        const email = $("#e-email").value.trim();
-        if (!/^\S+@\S+\.\S+$/.test(email)){ msg.textContent = "Confira o e-mail."; return; }
-        await nuvem.pedirCodigo(email);
-        emailPendente = email;
-        $("#e-email").disabled = true;
-        $("#bloco-codigo").classList.remove("oculto");
-        $("#e-outro").classList.remove("oculto");
-        ok.textContent = "Entrar";
-        msg.textContent = "Mandamos um código para " + email + ". Pode levar um minuto — olhe também o spam.";
-        $("#e-codigo").focus();
-      } else {
-        const codigo = $("#e-codigo").value.replace(/\D/g, "");
-        if (codigo.length < 6){ msg.textContent = "O código tem pelo menos 6 dígitos."; return; }
-        const u = await nuvem.confirmarCodigo(emailPendente, codigo);
-        msg.textContent = "";
-        voltarPraEmail();
-        await entrou(u);
-        torrada("Pronto! Seus dados agora ficam salvos na nuvem.");
-      }
+      await nuvem.pedirCodigo(email);
+      ok.textContent = "Mandar de novo";
+      msg.textContent = "Mandamos um link para " + email + ". Abra o e-mail neste aparelho e toque no link: o painel abre já conectado. Pode levar um minuto — olhe também o spam.";
     } catch (e) {
       msg.textContent = e?.status === 429
-        ? "Muitos pedidos seguidos. Espere um minuto e tente de novo."
-        : emailPendente ? "Código errado ou vencido. Confira ou peça outro."
-        : "Não deu pra mandar o código agora. Confira a internet e tente de novo.";
+        ? "Muitos pedidos seguidos. Espere alguns minutos e tente de novo."
+        : "Não deu pra mandar o link agora. Confira a internet e tente de novo.";
     } finally { ok.disabled = false; }
   });
-  $("#e-outro").addEventListener("click", () => { voltarPraEmail(); msg.textContent = ""; $("#e-email").focus(); });
   $("#e-depois").addEventListener("click", () => { esconderEntrar(); pintarEstado(); torrada("Tudo bem. Seus dados ficam só neste aparelho até você entrar."); });
 }
 
@@ -1720,7 +1702,10 @@ function iniciar(){
 
 async function ligarNuvem(){
   try { usuario = await nuvem.usuarioAtual(); } catch { usuario = null; }
-  if (usuario) await entrou(usuario);
+  if (usuario){
+    await entrou(usuario);
+    if (veioDoLink) torrada("Pronto! Seus dados agora ficam salvos na nuvem.");
+  }
   else if (navigator.onLine) mostrarEntrar();
   pintarEstado();
   nuvem.aoMudarSessao(u => {

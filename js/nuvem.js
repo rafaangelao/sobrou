@@ -6,7 +6,7 @@ async function obter(){
   if (!cliente){
     const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.119.0");
     cliente = createClient(SUPABASE_URL, SUPABASE_CHAVE, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "implicit" },
     });
   }
   return cliente;
@@ -17,6 +17,7 @@ export async function usuarioAtual(){
   return data.session?.user || null;
 }
 
+/* manda o e-mail de entrada (link; se o modelo do e-mail tiver {{ .Token }}, também traz código) */
 export async function pedirCodigo(email){
   const { error } = await (await obter()).auth.signInWithOtp({
     email, options: { shouldCreateUser: true, emailRedirectTo: location.origin },
