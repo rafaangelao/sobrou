@@ -1,5 +1,6 @@
 import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses } from "./base.js";
 import { estadoVazio, migrarV2, juntar } from "./juntar.js";
+import { lerLinha } from "./rapido.js";
 import { ATE_PADRAO, ultimoMes, parcelaNoMes, ocorrencias, resumoDoMes, mesesDaFaixa,
          pendentesAnteriores, descricaoPagamento, pagar, casarComFixa } from "./fixas.js";
 
@@ -1346,6 +1347,10 @@ document.addEventListener("click", ev => {
     case "ir":       ui.aba = alvo.dataset.aba; render(); window.scrollTo({ top:0, behavior:"smooth" }); break;
     case "fechar":   fecharModal(); break;
     case "csv":      baixarCSV(); break;
+    case "rapido-tipo":
+      rapidoTipo = rascunho?.tipo === "entrada" ? "gasto" : "entrada";
+      lerRapido();
+      break;
     case "nova-fixa":   abrirFormFixa(null); break;
     case "editar-fixa": abrirFormFixa(alvo.dataset.id); break;
     case "apagar-fixa": {
@@ -1483,6 +1488,9 @@ document.addEventListener("change", ev => {
 
 document.addEventListener("keydown", ev => {
   if (ev.key === "Escape") fecharModal();
+  if (ev.key === "/" && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && !$("#modal").children.length){
+    ev.preventDefault(); $("#rapido-txt").focus(); return;
+  }
   if (ev.key === "n" && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && !$("#modal").children.length){
     ev.preventDefault(); abrirForm(null);
   }
@@ -1490,6 +1498,81 @@ document.addEventListener("keydown", ev => {
 
 
 /* =============================== INÍCIO ================================= */
+/* ============================ LANÇAR RÁPIDO ============================= */
+let rascunho = null, rapidoCat = null, rapidoTipo = null;
+
+function lerRapido(){
+  const t = $("#rapido-txt").value;
+  rascunho = t.trim() ? lerLinha(t, hoje(), classificar) : null;
+  if (rascunho && rapidoTipo){
+    rascunho.tipo = rapidoTipo;
+    if (rapidoTipo === "entrada"){ rascunho.categoria = ""; rascunho.origem = ""; }
+    else if (!rascunho.categoria) Object.assign(rascunho, classificar(rascunho.descricao));
+  }
+  if (rascunho && rascunho.tipo === "gasto" && rapidoCat !== null){ rascunho.categoria = rapidoCat; rascunho.origem = "você escolheu"; }
+  pintarRapido(!!t.trim());
+}
+
+function pintarRapido(temTexto){
+  const p = $("#rapido-previa");
+  if (!temTexto){ p.innerHTML = ""; return; }
+  if (!rascunho){ p.innerHTML = `<span class="falta">faltou o valor</span>`; return; }
+  const r = rascunho, mais = r.tipo === "entrada";
+  if (r.parcelas){
+    p.innerHTML = `<span class="chip">${r.parcelas}x de ${brl(r.valor / r.parcelas)}</span><span>Enter abre o cadastro do parcelado</span>`;
+    return;
+  }
+  const opcoes = estado.categorias.map(c => `<option value="${esc(c)}"${r.categoria === c ? " selected" : ""}>${esc(c)}</option>`).join("");
+  const quando = r.data === hoje() ? "hoje" : r.data === somarDias(hoje(), -1) ? "ontem" : rotuloData(r.data);
+  p.innerHTML = `
+    <button type="button" class="chip ${mais ? "mais" : ""}" data-acao="rapido-tipo" title="Trocar entre gasto e entrada">${mais ? "Entrada" : "Gasto"}</button>
+    <span class="chip ${mais ? "mais" : ""}">${brl(r.valor)}</span>
+    ${mais ? "" : `<select id="rapido-cat" data-vazio="${r.categoria ? 0 : 1}" aria-label="Categoria"><option value="">— escolher categoria —</option>${opcoes}</select>`}
+    <span class="chip">${quando}</span>
+    <span>${esc(r.descricao)}</span>`;
+}
+
+function limparRapido(){
+  $("#rapido-txt").value = "";
+  rascunho = null; rapidoCat = null; rapidoTipo = null;
+  pintarRapido(false);
+}
+
+function salvarRapido(){
+  lerRapido();
+  const r = rascunho;
+  if (!r) return torrada("Faltou o valor. Ex.: uber 15");
+  if (r.parcelas){
+    abrirFormFixa(null, { tipo: "parcelado", nome: r.descricao, valor: Math.round(r.valor / r.parcelas * 100) / 100,
+                          parcelas: r.parcelas, inicio: mesDe(r.data), dia: +r.data.slice(8), categoria: r.categoria || "Outros" });
+    limparRapido();
+    return;
+  }
+  if (r.tipo === "gasto" && !r.categoria){ $("#rapido-cat")?.focus(); return torrada("Escolha a categoria antes de salvar."); }
+  if (r.tipo === "gasto"){
+    if (!estado.categorias.includes(r.categoria)) estado.categorias.push(r.categoria);
+    if (rapidoCat){ const k = chaveComerciante(r.descricao); if (k) estado.regras[k] = r.categoria; }
+  }
+  estado.lancamentos.push({ id: uid(), tipo: r.tipo, data: r.data, categoria: r.tipo === "gasto" ? r.categoria : "",
+                            descricao: r.descricao, valor: r.valor, editadoEm: Date.now() });
+  if (ui.periodo !== "tudo" && mesDe(r.data) !== ui.periodo) ui.periodo = mesDe(r.data);
+  limparRapido();
+  mudou();
+  torrada((r.tipo === "entrada" ? "Entrada de " : "Gasto de ") + brl(r.valor) + " registrado.");
+}
+
+function ligarRapido(){
+  const inp = $("#rapido-txt");
+  inp.addEventListener("input", () => { if (!inp.value.trim()){ rapidoCat = null; rapidoTipo = null; } lerRapido(); });
+  $("#rapido-previa").addEventListener("change", ev => {
+    if (ev.target.id !== "rapido-cat") return;
+    rapidoCat = ev.target.value || null;
+    lerRapido();
+    inp.focus();
+  });
+  $("#rapido").addEventListener("submit", ev => { ev.preventDefault(); salvarRapido(); });
+}
+
 function iniciar(){
   carregarEstado();
   const salvo = lerLocal(CHAVE_UI) || {};
@@ -1497,7 +1580,7 @@ function iniciar(){
   ui.periodo = salvo.periodo || periodoPadrao();
   render();
   pintarEstado();
-
+  ligarRapido();
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar);
