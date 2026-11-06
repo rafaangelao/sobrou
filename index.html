@@ -2,9 +2,16 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0F241B">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/icones/favicon.png">
+<link rel="apple-touch-icon" href="/icones/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Meu Dinheiro">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Painel do Meu Dinheiro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -489,6 +496,15 @@ h1,h2,h3{font-weight:600;letter-spacing:-.01em;font-variation-settings:"SOFT" 30
 .dia-rot{letter-spacing:.14em;font-size:11px}
 
 textarea.extrato{font-family:ui-monospace,"Cascadia Mono",Consolas,Menlo,monospace;font-size:12.5px}
+
+/* app na tela inicial do iPhone: nada embaixo do relógio nem da barrinha de baixo */
+.topo{padding-top:calc(14px + env(safe-area-inset-top))}
+.fab{bottom:calc(20px + env(safe-area-inset-bottom))}
+#torrada{bottom:calc(24px + env(safe-area-inset-bottom))}
+.veu{padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+body{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+.pronto-app{text-align:center}
+.pronto-app .selo{margin:4px auto 14px;width:56px;height:56px;font-size:26px}
 
 /* limites */
 .meta-linha{grid-template-columns:minmax(0,1fr) auto}

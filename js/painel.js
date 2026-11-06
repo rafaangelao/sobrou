@@ -2,6 +2,7 @@ import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal, somarDi
 import { estadoVazio, migrarV2, juntar } from "./juntar.js";
 import { lerLinha } from "./rapido.js";
 import * as nuvem from "./nuvem.js";
+import { novoCodigo, urlDeRetorno, codigoDaUrl, pedidoValido } from "./pareamento.js";
 import { sincronizar as sincronizarCom } from "./sincronia.js";
 import { ATE_PADRAO, ultimoMes, parcelaNoMes, ocorrencias, resumoDoMes, mesesDaFaixa,
          pendentesAnteriores, descricaoPagamento, pagar, casarComFixa, jaPagaNoExtrato } from "./fixas.js";
@@ -1703,6 +1704,35 @@ function ligarRapido(){
 /* volta do link do e-mail: o supabase-js lê o #access_token e limpa o endereço */
 const veioDoLink = /access_token=/.test(location.hash);
 const erroDoLink = /error_code=([\w-]+)/.exec(location.hash)?.[1] || "";
+/* app da tela inicial (iPhone): o link do e-mail abre no Safari, então o app pede
+   o link com um código e o Safari devolve a sessão por ele (ver js/pareamento.js) */
+const noApp = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+const codigoNaVolta = codigoDaUrl(location.search);
+const CHAVE_PAR = "painel.pareamento";
+let timerPar = 0;
+
+function esperarSafari(){
+  clearTimeout(timerPar);
+  const p = lerLocal(CHAVE_PAR);
+  if (usuario || !pedidoValido(p, Date.now())) return;
+  if (document.visibilityState === "visible" && navigator.onLine){
+    nuvem.buscarSessao(p.codigo).then(async u => {
+      if (!u) return;
+      localStorage.removeItem(CHAVE_PAR);
+      await entrou(u);
+      torrada("Pronto! Seus dados agora ficam salvos na nuvem.");
+    }).catch(() => {});
+  }
+  timerPar = setTimeout(esperarSafari, 3000);
+}
+
+function mostrarProntoNoSafari(){
+  $("#modal").innerHTML = `<div class="veu"><div class="folha pronto-app" role="dialog" aria-modal="true" aria-labelledby="pronto-tit">
+    <div class="selo" aria-hidden="true">$</div>
+    <h2 id="pronto-tit">Pronto, pode voltar pro app</h2>
+    <p class="sub">Abra o <b>Meu Dinheiro</b> na tela inicial: ele entra sozinho em alguns segundos. Pode fechar esta aba.</p>
+  </div></div>`;
+}
 
 function mostrarEntrar(){
   $("#entrar").classList.remove("oculto");
@@ -1721,7 +1751,9 @@ async function entrou(u){
 function ligarEntrar(){
   const msg = $("#entrar-msg"), ok = $("#e-ok");
   if (erroDoLink){
-    msg.textContent = erroDoLink === "otp_expired"
+    msg.textContent = codigoNaVolta
+      ? "Esse link já venceu ou já foi usado. Volte para o app e peça outro por lá."
+      : erroDoLink === "otp_expired"
       ? "Esse link já venceu ou já foi usado. Peça outro abaixo."
       : "Não deu pra entrar com esse link. Peça outro abaixo.";
     history.replaceState(null, "", location.pathname + location.search);
@@ -1732,9 +1764,16 @@ function ligarEntrar(){
     if (!/^\S+@\S+\.\S+$/.test(email)){ msg.textContent = "Confira o e-mail."; return; }
     ok.disabled = true;
     try {
-      await nuvem.pedirCodigo(email);
+      if (noApp){
+        const p = { codigo: novoCodigo(), em: Date.now() };
+        gravarLocal(CHAVE_PAR, p);
+        await nuvem.pedirCodigo(email, urlDeRetorno(location.origin, p.codigo));
+        esperarSafari();
+      } else await nuvem.pedirCodigo(email);
       ok.textContent = "Mandar de novo";
-      msg.textContent = "Mandamos um link para " + email + ". Abra o e-mail neste aparelho e toque no link: o painel abre já conectado. Pode levar um minuto — olhe também o spam.";
+      msg.textContent = noApp
+        ? "Mandamos um link para " + email + ". Toque nele no e-mail (ele abre no Safari) e depois volte para cá: o app entra sozinho. Pode levar um minuto — olhe também o spam."
+        : "Mandamos um link para " + email + ". Abra o e-mail neste aparelho e toque no link: o painel abre já conectado. Pode levar um minuto — olhe também o spam.";
     } catch (e) {
       msg.textContent = e?.status === 429
         ? "Muitos pedidos seguidos. Espere alguns minutos e tente de novo."
@@ -1758,6 +1797,15 @@ function iniciar(){
 
 async function ligarNuvem(){
   try { usuario = await nuvem.usuarioAtual(); } catch { usuario = null; }
+  if (codigoNaVolta) history.replaceState(null, "", location.pathname + location.hash);
+  if (codigoNaVolta && usuario && veioDoLink){
+    try {
+      await nuvem.entregarSessao(codigoNaVolta);
+      usuario = null;
+      mostrarProntoNoSafari();
+      return;
+    } catch { /* não deu pra entregar: segue entrando aqui mesmo */ }
+  }
   if (usuario){
     await entrou(usuario);
     if (veioDoLink) torrada("Pronto! Seus dados agora ficam salvos na nuvem.");
@@ -1767,7 +1815,11 @@ async function ligarNuvem(){
   nuvem.aoMudarSessao(u => {
     if (!u && usuario){ usuario = null; $("#btn-sair").classList.add("oculto"); pintarEstado(); mostrarEntrar(); }
   }).catch(() => {});
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sincronizar(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (usuario) sincronizar(); else esperarSafari();
+  });
+  esperarSafari();
   window.addEventListener("online", async () => {
     falhou = false;
     if (!usuario){ try { usuario = await nuvem.usuarioAtual(); } catch {} }
@@ -1775,6 +1827,9 @@ async function ligarNuvem(){
   });
   window.addEventListener("offline", pintarEstado);
 }
+
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost"))
+  navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {});
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar);
 else iniciar();

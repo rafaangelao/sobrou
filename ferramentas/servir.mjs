@@ -4,7 +4,7 @@ import { extname, join, normalize } from "node:path";
 
 const raiz = normalize(join(import.meta.dirname, ".."));
 const porta = Number(process.env.PORT) || 4173;
-const tipos = { ".html":"text/html; charset=utf-8", ".js":"text/javascript; charset=utf-8", ".json":"application/json", ".css":"text/css" };
+const tipos = { ".html":"text/html; charset=utf-8", ".js":"text/javascript; charset=utf-8", ".json":"application/json", ".css":"text/css", ".webmanifest":"application/manifest+json", ".png":"image/png" };
 
 http.createServer(async (req, res) => {
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
