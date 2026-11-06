@@ -104,3 +104,11 @@ export function casarComFixa(linha, ocs, chave){
     return !!(mParc && o.parcela && +mParc[1] === o.parcela && +mParc[2] === o.fixa.parcelas);
   }) || null;
 }
+
+/* a linha do extrato é o pagamento, já lançado, de uma fixa deste mês? (evita importar em dobro) */
+export function jaPagaNoExtrato(linha, ocs, chave){
+  const pagas = ocs
+    .filter(o => o.situacao === "pago" && o.lancamento && Math.abs(o.lancamento.valor - linha.valor) < 0.005)
+    .map(o => ({ ...o, situacao: "a-pagar", fixa: { ...o.fixa, valor: o.lancamento.valor } }));
+  return casarComFixa(linha, pagas, chave);
+}

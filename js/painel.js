@@ -2,7 +2,7 @@ import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal, somarDi
 import { estadoVazio, migrarV2, juntar } from "./juntar.js";
 import { lerLinha } from "./rapido.js";
 import { ATE_PADRAO, ultimoMes, parcelaNoMes, ocorrencias, resumoDoMes, mesesDaFaixa,
-         pendentesAnteriores, descricaoPagamento, pagar, casarComFixa } from "./fixas.js";
+         pendentesAnteriores, descricaoPagamento, pagar, casarComFixa, jaPagaNoExtrato } from "./fixas.js";
 
 /* ==========================================================================
    Painel do Meu Dinheiro
@@ -274,6 +274,7 @@ function analisarExtrato(texto){
 function montarLote(brutos){
   /* se o arquivo usa sinal negativo pra débito, positivo = entrada */
   const temNegativo = brutos.some(b => b.valor < 0);
+  const hj = hoje(), ocsPorMes = new Map(), usadas = new Set();
   const lote = [];
   for (const b of brutos){
     const n = normalizar(b.descricao);
@@ -281,11 +282,28 @@ function montarLote(brutos){
     const tipo = b.valor < 0 ? "gasto"
                : (temNegativo || RE_ENTRADA.test(n)) ? "entrada" : "gasto";
     const valor = Math.round(Math.abs(b.valor) * 100) / 100;
-    const { categoria, origem } = tipo === "gasto" ? classificar(b.descricao) : { categoria:"", origem:"" };
-    const repetido = estado.lancamentos.some(l =>
+
+    let fixa = null, fixaJaPaga = false;
+    if (tipo === "gasto" && estado.fixas.length){
+      const mes = mesDe(b.data);
+      if (!ocsPorMes.has(mes)) ocsPorMes.set(mes, ocorrencias(estado.fixas, estado.lancamentos, mes, hj));
+      const livres = ocsPorMes.get(mes).filter(o => !usadas.has(o.fixa.id + "|" + mes));
+      const o = casarComFixa({ descricao: b.descricao, valor }, livres, chaveComerciante);
+      if (o){
+        usadas.add(o.fixa.id + "|" + mes);
+        fixa = { fixaId: o.fixa.id, fixaMes: mes, rotulo: descricaoPagamento(o), categoria: o.fixa.categoria };
+      } else {
+        const p = jaPagaNoExtrato({ descricao: b.descricao, valor }, livres, chaveComerciante);
+        if (p){ usadas.add(p.fixa.id + "|" + mes); fixaJaPaga = true; }
+      }
+    }
+
+    const { categoria, origem } = fixa ? { categoria: fixa.categoria, origem: "é " + fixa.rotulo }
+      : tipo === "gasto" ? classificar(b.descricao) : { categoria: "", origem: "" };
+    const repetido = fixaJaPaga || estado.lancamentos.some(l =>
       l.data === b.data && Math.abs(l.valor - valor) < 0.005 &&
       (normalizar(l.descricao) === n || (chaveComerciante(l.descricao) && chaveComerciante(l.descricao) === chaveComerciante(b.descricao))));
-    lote.push({ data: b.data, descricao: b.descricao, valor, tipo, categoria, origem, repetido, incluir: !repetido });
+    lote.push({ data: b.data, descricao: b.descricao, valor, tipo, categoria, origem, repetido, incluir: !repetido, fixa });
   }
   return lote.sort((a,b) => a.data.localeCompare(b.data));
 }
@@ -1385,6 +1403,7 @@ document.addEventListener("click", ev => {
       const r = ui.lote?.[+alvo.dataset.linha];
       if (!r) break;
       r.tipo = r.tipo === "gasto" ? "entrada" : "gasto";
+      if (r.tipo === "entrada" && r.fixa){ r.fixa = null; r.categoria = ""; r.origem = ""; }
       if (r.tipo === "gasto" && !r.categoria){
         const c = classificar(r.descricao);
         r.categoria = c.categoria; r.origem = c.origem;
@@ -1413,10 +1432,14 @@ document.addEventListener("click", ev => {
           const k = lembrar ? chaveComerciante(r.descricao) : "";
           if (k) estado.regras[k] = r.categoria;
         }
+        const ehFixa = r.tipo === "gasto" && r.fixa &&
+          !estado.lancamentos.some(l => l.fixaId === r.fixa.fixaId && l.fixaMes === r.fixa.fixaMes);
         estado.lancamentos.push({
           id: uid(), tipo: r.tipo, data: r.data,
           categoria: r.tipo === "gasto" ? r.categoria : "",
-          descricao: r.descricao, valor: r.valor, editadoEm: Date.now(),
+          descricao: ehFixa ? r.fixa.rotulo : r.descricao,
+          valor: r.valor, editadoEm: Date.now(),
+          ...(ehFixa ? { fixaId: r.fixa.fixaId, fixaMes: r.fixa.fixaMes } : {}),
         });
       }
       const n = escolhidos.length;

@@ -92,3 +92,12 @@ test("casar linha do extrato com a fixa", () => {
   assert.equal(F.casarComFixa({ descricao:"PIX ALUGUEL APTO", valor:950 }, ocs, chave), null);
   assert.equal(F.casarComFixa({ descricao:"MERCADO", valor:150 }, ocs, chave), null);
 });
+
+test("linha do extrato que já é o pagamento lançado de uma fixa", () => {
+  const chave = d => d.toLowerCase().replace(/[^a-z ]/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(t => t.length > 2).slice(0, 2).join(" ");
+  const pago = { id:"p", tipo:"gasto", data:"2026-11-10", valor:150, descricao:"Celular (3/10)", fixaId:"cel", fixaMes:"2026-11" };
+  const ocs = F.ocorrencias([{ ...celular, valor:160 }, aluguel], [pago], "2026-11", "2026-11-01");
+  assert.equal(F.jaPagaNoExtrato({ descricao:"LOJA CEL PARCELA 03/10", valor:150 }, ocs, chave)?.fixa.id, "cel");
+  assert.equal(F.jaPagaNoExtrato({ descricao:"LOJA CEL PARCELA 03/10", valor:151 }, ocs, chave), null);
+  assert.equal(F.jaPagaNoExtrato({ descricao:"PIX ALUGUEL APTO", valor:900 }, ocs, chave), null);
+});
