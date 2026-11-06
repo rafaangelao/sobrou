@@ -1077,13 +1077,23 @@ function vazio(t, p){
 
 /* =============================== RENDER ================================= */
 const ABAS = [
-  { id:"visao",       rot:"Visão geral",  fn:abaVisao },
-  { id:"lancamentos", rot:"Lançamentos",  fn:abaLancamentos },
-  { id:"fixas",       rot:"Fixas e parcelas", fn:abaFixas },
-  { id:"importar",    rot:"Importar",     fn:abaImportar },
-  { id:"economizar",  rot:"Economizar",   fn:abaEconomizar },
-  { id:"metas",       rot:"Metas",        fn:abaMetas },
+  { id:"visao",       rot:"Visão geral",  curto:"Início",   fn:abaVisao },
+  { id:"lancamentos", rot:"Lançamentos",  curto:"Lançados", fn:abaLancamentos },
+  { id:"fixas",       rot:"Fixas e parcelas", curto:"Fixas", fn:abaFixas },
+  { id:"importar",    rot:"Importar",     curto:"Importar", fn:abaImportar },
+  { id:"economizar",  rot:"Economizar",   curto:"Economia", fn:abaEconomizar },
+  { id:"metas",       rot:"Metas",        curto:"Metas",    fn:abaMetas },
 ];
+/* ícones da barra de abas do celular */
+const ICONE_ABA = {
+  visao:       '<path d="M4 11.2 12 4l8 7.2V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
+  lancamentos: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle cx="4.6" cy="6.5" r="1"/><circle cx="4.6" cy="12" r="1"/><circle cx="4.6" cy="17.5" r="1"/>',
+  fixas:       '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/>',
+  importar:    '<path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/>',
+  economizar:  '<path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.8 10.6c.8.7 1.3 1.6 1.3 2.6v.3h5v-.3c0-1 .5-1.9 1.3-2.6A6 6 0 0 0 12 3z"/>',
+  metas:       '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+};
+const svgAba = id => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONE_ABA[id] || ""}</svg>`;
 
 function render(){
   const periodos = periodosDisponiveis();
@@ -1104,7 +1114,7 @@ function render(){
 
   $("#abas").innerHTML = ABAS.map(a => {
     const c = a.id === "lancamentos" ? `<span class="cont">${doPeriodo().length}</span>` : "";
-    return `<button role="tab" type="button" aria-selected="${a.id===ui.aba}" data-acao="ir" data-aba="${a.id}">${a.rot}${c}</button>`;
+    return `<button role="tab" type="button" aria-selected="${a.id===ui.aba}" aria-label="${a.rot}" data-acao="ir" data-aba="${a.id}">${svgAba(a.id)}<span class="rot-l">${a.rot}</span><span class="rot-c">${a.curto}</span>${c}</button>`;
   }).join("");
 
   $("#conteudo").innerHTML = (ABAS.find(a => a.id === ui.aba) || ABAS[0]).fn();
@@ -1748,6 +1758,17 @@ async function entrou(u){
   await sincronizar();
 }
 
+/* evita pedir vários links seguidos (cada pedido gasta o limite de e-mails) */
+function esperarParaReenviar(btn, s){
+  btn.disabled = true;
+  const passo = () => {
+    if (s <= 0){ btn.disabled = false; btn.textContent = "Mandar de novo"; return; }
+    btn.textContent = "Mandar de novo (" + s-- + "s)";
+    setTimeout(passo, 1000);
+  };
+  passo();
+}
+
 function ligarEntrar(){
   const msg = $("#entrar-msg"), ok = $("#e-ok");
   if (erroDoLink){
@@ -1765,20 +1786,25 @@ function ligarEntrar(){
     ok.disabled = true;
     try {
       if (noApp){
-        const p = { codigo: novoCodigo(), em: Date.now() };
-        gravarLocal(CHAVE_PAR, p);
+        const atual = lerLocal(CHAVE_PAR);
+        const p = { codigo: pedidoValido(atual, Date.now()) ? atual.codigo : novoCodigo(), em: Date.now() };
         await nuvem.pedirCodigo(email, urlDeRetorno(location.origin, p.codigo));
+        gravarLocal(CHAVE_PAR, p);
         esperarSafari();
       } else await nuvem.pedirCodigo(email);
-      ok.textContent = "Mandar de novo";
+      esperarParaReenviar(ok, 60);
       msg.textContent = noApp
         ? "Mandamos um link para " + email + ". Toque nele no e-mail (ele abre no Safari) e depois volte para cá: o app entra sozinho. Pode levar um minuto — olhe também o spam."
         : "Mandamos um link para " + email + ". Abra o e-mail neste aparelho e toque no link: o painel abre já conectado. Pode levar um minuto — olhe também o spam.";
     } catch (e) {
-      msg.textContent = e?.status === 429
-        ? "Muitos pedidos seguidos. Espere alguns minutos e tente de novo."
-        : "Não deu pra mandar o link agora. Confira a internet e tente de novo.";
-    } finally { ok.disabled = false; }
+      const segundos = /(\d+)\s*seconds?/.exec(e?.message || "")?.[1];
+      msg.textContent = e?.status !== 429
+        ? "Não deu pra mandar o link agora. Confira a internet e tente de novo."
+        : segundos
+        ? "Espere " + segundos + " segundos para pedir outro link."
+        : "Chegou no limite de e-mails por hora. Se um link já chegou, use ele: continua valendo por uns minutos. Se não, tente de novo daqui a uma hora.";
+      ok.disabled = false;
+    }
   });
   $("#e-depois").addEventListener("click", () => { esconderEntrar(); pintarEstado(); torrada("Tudo bem. Seus dados ficam só neste aparelho até você entrar."); });
 }
