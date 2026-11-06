@@ -21,6 +21,11 @@ test("codigoDaUrl: lê só código válido", () => {
   assert.equal(codigoDaUrl("?par=" + "zz".repeat(24)), "");
 });
 
+test("pedidoValido: o app espera o Safari por pelo menos 1 hora (e-mail pode demorar)", () => {
+  const p = { codigo: "0f".repeat(24), em: 0 };
+  assert.equal(pedidoValido(p, 60 * 60 * 1000), true);
+});
+
 test("pedidoValido: vale por um tempo e depois vence", () => {
   const p = { codigo: "0f".repeat(24), em: 1000 };
   assert.equal(pedidoValido(p, 1000 + 60_000), true);

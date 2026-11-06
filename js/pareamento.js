@@ -2,7 +2,8 @@
    e-mail sempre abre no Safari. Então o app pede o link com um código secreto
    (?par=...), o Safari entrega a sessão para esse código e o app a busca. */
 
-export const VALIDADE_PEDIDO = 20 * 60 * 1000;
+/* quanto tempo o app fica esperando o Safari (o servidor guarda a sessão entregue só por 20 min) */
+export const VALIDADE_PEDIDO = 2 * 60 * 60 * 1000;
 const FORMATO = /^[0-9a-f]{48}$/;
 
 export function novoCodigo(){
