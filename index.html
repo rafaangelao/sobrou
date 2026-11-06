@@ -461,6 +461,10 @@ button.chip{cursor:pointer}
 .rapido-previa select{padding:3px 8px;border-radius:999px;border:1px solid var(--linha-forte);background:var(--superficie);font:inherit;font-size:12.5px}
 .rapido-previa select[data-vazio="1"]{border-color:var(--grave);color:var(--grave);font-weight:600}
 .rapido-previa .falta{color:var(--grave);font-weight:600}
+.estado[data-s="offline"]{border-color:var(--alerta);background:var(--alerta-suave);color:var(--alerta);cursor:pointer}
+.estado[data-s="offline"] .ponto{background:var(--alerta)}
+.entrar{position:fixed;inset:0;z-index:95;display:grid;place-items:center;padding:18px;background:rgba(26,24,38,.55);backdrop-filter:blur(3px)}
+.entrar .folha{max-width:400px;width:100%}
 .oculto{display:none!important}
 </style>
 </head>
@@ -484,6 +488,7 @@ button.chip{cursor:pointer}
       <button type="button" class="estado" id="estado" data-s="ok">
         <i class="ponto"></i><span>Salvo</span>
       </button>
+      <button type="button" class="btn btn-txt oculto" id="btn-sair" data-acao="sair" style="padding:6px 10px;font-size:12.5px">Sair</button>
     </div>
     <form class="rapido" id="rapido" autocomplete="off">
       <input id="rapido-txt" type="text" enterkeyhint="done" placeholder="Lançar rápido… ex.: uber 15 · ifood 42,90 ontem" aria-label="Lançar rápido" aria-describedby="rapido-previa">
@@ -498,6 +503,26 @@ button.chip{cursor:pointer}
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
 </button>
 
+<div id="entrar" class="entrar oculto" role="dialog" aria-modal="true" aria-labelledby="entrar-tit">
+  <form class="folha" id="form-entrar" novalidate>
+    <h2 id="entrar-tit">Entrar no painel</h2>
+    <p class="sub" style="margin:0 0 12px">Seus lançamentos ficam salvos na nuvem e aparecem no celular e no computador. É só uma vez por aparelho.</p>
+    <div class="campo">
+      <label for="e-email">Seu e-mail</label>
+      <input id="e-email" type="email" autocomplete="email" inputmode="email" required>
+    </div>
+    <div class="campo oculto" id="bloco-codigo">
+      <label for="e-codigo">Código que chegou no e-mail</label>
+      <input id="e-codigo" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="10">
+    </div>
+    <p class="sub" id="entrar-msg" role="status" style="margin:8px 0 0"></p>
+    <div class="folha-pe">
+      <button type="button" class="btn" id="e-depois">Agora não</button>
+      <button type="button" class="btn oculto" id="e-outro">Mandar outro código</button>
+      <button type="submit" class="btn btn-forte" id="e-ok">Mandar código</button>
+    </div>
+  </form>
+</div>
 <div id="modal"></div>
 <div id="torrada" role="status" aria-live="polite"></div>
 

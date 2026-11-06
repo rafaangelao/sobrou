@@ -1,6 +1,8 @@
 import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses } from "./base.js";
 import { estadoVazio, migrarV2, juntar } from "./juntar.js";
 import { lerLinha } from "./rapido.js";
+import * as nuvem from "./nuvem.js";
+import { sincronizar as sincronizarCom } from "./sincronia.js";
 import { ATE_PADRAO, ultimoMes, parcelaNoMes, ocorrencias, resumoDoMes, mesesDaFaixa,
          pendentesAnteriores, descricaoPagamento, pagar, casarComFixa, jaPagaNoExtrato } from "./fixas.js";
 
@@ -44,7 +46,8 @@ const CHAVE_UI    = "painel-dinheiro:ui";
 
 let estado = null;
 let ui = { aba:"visao", periodo:null, tipoForm:"gasto", cortes:{}, lote:null };
-let sujo = false;
+let sujo = false, publicando = false, falhou = false, timerSync = 0, mudancas = 0;
+let usuario = null;
 
 function lerLocal(chave){ try { const t = localStorage.getItem(chave); return t ? JSON.parse(t) : null; } catch { return null; } }
 function gravarLocal(chave, valor){ try { localStorage.setItem(chave, JSON.stringify(valor)); } catch {} }
@@ -56,21 +59,51 @@ function carregarEstado(){
   gravarLocal(CHAVE_DADOS, estado);
 }
 
-function mudou({ sincronizar = true } = {}){
+function mudou(){
   estado.atualizadoEm = Date.now();
+  mudancas++;
   gravarLocal(CHAVE_DADOS, estado);
   sujo = true;
   pintarEstado();
   render();
-  if (sincronizar) agendarSync();
+  agendarSync();
 }
 
 /* --------------------------- persistência ------------------------------- */
-function agendarSync(){ /* nuvem entra na Tarefa 5 */ }
+function agendarSync(ms = 3000){
+  clearTimeout(timerSync);
+  timerSync = setTimeout(sincronizar, ms);
+}
+
+async function sincronizar(){
+  if (!usuario || publicando) return;
+  publicando = true; pintarEstado();
+  const n = mudancas;
+  try {
+    const r = await sincronizarCom(nuvem.apiDoCaderno(usuario.id), estado);
+    falhou = false;
+    if (!r.ok){ sujo = true; agendarSync(15000); return; }
+    const antes = JSON.stringify(estado);
+    estado = juntar(estado, r.estado);       /* não perde o que foi digitado durante o envio */
+    gravarLocal(CHAVE_DADOS, estado);
+    sujo = mudancas !== n;
+    if (sujo) agendarSync();
+    if (JSON.stringify(estado) !== antes) render();
+  } catch {
+    falhou = true; sujo = true;
+  } finally {
+    publicando = false; pintarEstado();
+  }
+}
 
 function pintarEstado(){
   const el = $("#estado"), txt = el.querySelector("span");
-  el.dataset.s = "ok"; txt.textContent = "Salvo neste aparelho"; el.title = "";
+  const por = (s, t, dica = "") => { el.dataset.s = s; txt.textContent = t; el.title = dica; };
+  if (!usuario) return por("offline", navigator.onLine ? "Entrar pra salvar na nuvem" : "Sem conexão — salvo neste aparelho");
+  if (publicando) return por("salvando", "Salvando…");
+  if (!navigator.onLine || falhou) return por("offline", "Sem conexão — salvo neste aparelho", "Tento de novo quando a internet voltar.");
+  if (sujo) return por("sujo", "Salvar agora", "Há mudanças ainda não enviadas.");
+  por("ok", "Tudo salvo");
 }
 
 /* ------------------------------ seleção --------------------------------- */
@@ -1365,6 +1398,14 @@ document.addEventListener("click", ev => {
     case "ir":       ui.aba = alvo.dataset.aba; render(); window.scrollTo({ top:0, behavior:"smooth" }); break;
     case "fechar":   fecharModal(); break;
     case "csv":      baixarCSV(); break;
+    case "sair": {
+      nuvem.sair().catch(() => {});
+      usuario = null;
+      $("#btn-sair").classList.add("oculto");
+      pintarEstado();
+      torrada("Você saiu. Os dados continuam neste aparelho.");
+      break;
+    }
     case "rapido-tipo":
       rapidoTipo = rascunho?.tipo === "entrada" ? "gasto" : "entrada";
       lerRapido();
@@ -1461,7 +1502,7 @@ document.addEventListener("click", ev => {
   }
 });
 
-$("#estado").addEventListener("click", () => {});
+$("#estado").addEventListener("click", () => { if (!usuario) mostrarEntrar(); else sincronizar(); });
 $("#sel-periodo").addEventListener("change", e => { ui.periodo = e.target.value; render(); });
 
 document.addEventListener("input", ev => {
@@ -1596,6 +1637,69 @@ function ligarRapido(){
   $("#rapido").addEventListener("submit", ev => { ev.preventDefault(); salvarRapido(); });
 }
 
+/* ================================ LOGIN ================================= */
+let emailPendente = "";
+
+function mostrarEntrar(){
+  $("#entrar").classList.remove("oculto");
+  setTimeout(() => (emailPendente ? $("#e-codigo") : $("#e-email")).focus(), 40);
+}
+function esconderEntrar(){ $("#entrar").classList.add("oculto"); }
+
+function voltarPraEmail(){
+  emailPendente = "";
+  $("#e-email").disabled = false;
+  $("#bloco-codigo").classList.add("oculto");
+  $("#e-outro").classList.add("oculto");
+  $("#e-codigo").value = "";
+  $("#e-ok").textContent = "Mandar código";
+}
+
+async function entrou(u){
+  usuario = u;
+  $("#btn-sair").classList.remove("oculto");
+  esconderEntrar();
+  pintarEstado();
+  await sincronizar();
+}
+
+function ligarEntrar(){
+  const msg = $("#entrar-msg"), ok = $("#e-ok");
+  $("#form-entrar").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    ok.disabled = true;
+    try {
+      if (!emailPendente){
+        const email = $("#e-email").value.trim();
+        if (!/^\S+@\S+\.\S+$/.test(email)){ msg.textContent = "Confira o e-mail."; return; }
+        await nuvem.pedirCodigo(email);
+        emailPendente = email;
+        $("#e-email").disabled = true;
+        $("#bloco-codigo").classList.remove("oculto");
+        $("#e-outro").classList.remove("oculto");
+        ok.textContent = "Entrar";
+        msg.textContent = "Mandamos um código para " + email + ". Pode levar um minuto — olhe também o spam.";
+        $("#e-codigo").focus();
+      } else {
+        const codigo = $("#e-codigo").value.replace(/\D/g, "");
+        if (codigo.length < 6){ msg.textContent = "O código tem pelo menos 6 dígitos."; return; }
+        const u = await nuvem.confirmarCodigo(emailPendente, codigo);
+        msg.textContent = "";
+        voltarPraEmail();
+        await entrou(u);
+        torrada("Pronto! Seus dados agora ficam salvos na nuvem.");
+      }
+    } catch (e) {
+      msg.textContent = e?.status === 429
+        ? "Muitos pedidos seguidos. Espere um minuto e tente de novo."
+        : emailPendente ? "Código errado ou vencido. Confira ou peça outro."
+        : "Não deu pra mandar o código agora. Confira a internet e tente de novo.";
+    } finally { ok.disabled = false; }
+  });
+  $("#e-outro").addEventListener("click", () => { voltarPraEmail(); msg.textContent = ""; $("#e-email").focus(); });
+  $("#e-depois").addEventListener("click", () => { esconderEntrar(); pintarEstado(); torrada("Tudo bem. Seus dados ficam só neste aparelho até você entrar."); });
+}
+
 function iniciar(){
   carregarEstado();
   const salvo = lerLocal(CHAVE_UI) || {};
@@ -1604,6 +1708,25 @@ function iniciar(){
   render();
   pintarEstado();
   ligarRapido();
+  ligarEntrar();
+  ligarNuvem();
+}
+
+async function ligarNuvem(){
+  try { usuario = await nuvem.usuarioAtual(); } catch { usuario = null; }
+  if (usuario) await entrou(usuario);
+  else if (navigator.onLine) mostrarEntrar();
+  pintarEstado();
+  nuvem.aoMudarSessao(u => {
+    if (!u && usuario){ usuario = null; $("#btn-sair").classList.add("oculto"); pintarEstado(); mostrarEntrar(); }
+  }).catch(() => {});
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sincronizar(); });
+  window.addEventListener("online", async () => {
+    falhou = false;
+    if (!usuario){ try { usuario = await nuvem.usuarioAtual(); } catch {} }
+    if (usuario) await entrou(usuario); else mostrarEntrar();
+  });
+  window.addEventListener("offline", pintarEstado);
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", iniciar);
