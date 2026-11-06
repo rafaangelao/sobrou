@@ -290,6 +290,26 @@ function montarLote(brutos){
 }
 
 /* ============================ ABA: VISÃO GERAL =========================== */
+function avisoFixas(){
+  if (!estado.fixas.length) return "";
+  const hj = hoje(), limite = somarDias(hj, 5);
+  const atual = mesDe(hj);
+  const ocs = [
+    ...ocorrencias(estado.fixas, estado.lancamentos, atual, hj),
+    ...ocorrencias(estado.fixas, estado.lancamentos, somarMeses(atual, 1), hj),
+  ];
+  const vencendo = ocs.filter(o => o.situacao === "a-pagar" && o.vencimento <= limite);
+  const atrasadas = [...pendentesAnteriores(estado.fixas, estado.lancamentos, hj), ...ocs.filter(o => o.situacao === "atrasado")];
+  if (!vencendo.length && !atrasadas.length) return "";
+  const partes = [];
+  if (atrasadas.length) partes.push(`${atrasadas.length} atrasada${atrasadas.length === 1 ? "" : "s"} (${brl(somar(atrasadas))})`);
+  if (vencendo.length) partes.push(`${vencendo.length} conta${vencendo.length === 1 ? " vence" : "s vencem"} nos próximos 5 dias (${brl(somar(vencendo))})`);
+  return `<div class="aviso" data-t="${atrasadas.length ? "grave" : ""}" role="status">
+    <span>${partes.join(" · ")}</span>
+    <button class="btn btn-txt" type="button" data-acao="ir" data-aba="fixas" style="margin-left:auto">Ver fixas</button>
+  </div>`;
+}
+
 function abaVisao(){
   const itens = doPeriodo();
   const gastos = gastosDe(itens), entradas = entradasDe(itens);
@@ -297,8 +317,11 @@ function abaVisao(){
   const guardado = somar(gastos.filter(g => g.categoria === "Guardar dinheiro"));
   const saldo = te - tg;
   const cats = porCategoria(gastos);
+  const aviso = avisoFixas();
+  const prev = ui.periodo !== "tudo" && estado.fixas.length
+    ? resumoDoMes(ocorrencias(estado.fixas, estado.lancamentos, ui.periodo, hoje())) : null;
 
-  if (!itens.length) return vazio(
+  if (!itens.length) return aviso + vazio(
     "Nada lançado " + (ui.periodo === "tudo" ? "ainda" : "em " + rotuloMes(ui.periodo)),
     "Toque no botão + e registre o primeiro gasto ou recebimento deste período. O painel calcula o resto sozinho."
   );
@@ -321,6 +344,11 @@ function abaVisao(){
         <div class="rot">Guardado</div><div class="val">${brl(guardado)}</div>
         <div class="pe">${guardado ? "bom trabalho" : "nada separado ainda"}</div>
       </div>
+      ${prev && prev.aPagar ? `
+      <div class="kpi" style="--faixa:var(--alerta)">
+        <div class="rot">A pagar</div><div class="val">${brl(prev.aPagar)}</div>
+        <div class="pe">fixas e parcelas do mês${prev.atrasado ? " · " + brl(prev.atrasado) + " atrasado" : ""}</div>
+      </div>` : ""}
     </section>`;
 
   /* ---- barras por categoria ---- */
@@ -372,7 +400,7 @@ function abaVisao(){
     ritmo = blocoColunas("Dia a dia do mês", sub, barras, nd > 20 ? 5 : 2);
   }
 
-  return kpis + `<div class="grade grade-2">${painelCats}${ritmo}</div>` + blocoUltimos(itens);
+  return aviso + kpis + `<div class="grade grade-2">${painelCats}${ritmo}</div>` + blocoUltimos(itens);
 }
 
 function tabelaCats(cats, tg, te){
