@@ -389,7 +389,7 @@ function abaVisao(){
         <div class="rot">Saiu</div><div class="val">${brl(tg)}</div>
         <div class="pe">${gastos.length} gasto${gastos.length===1?"":"s"}${te?" · "+pctTxt(pct(tg,te))+" do que entrou":""}</div>
       </div>
-      <div class="kpi" style="--faixa:${saldo>=0?"var(--marca)":"var(--grave)"}" data-t="${saldo>=0?"":"grave"}">
+      <div class="kpi" data-heroi style="--faixa:${saldo>=0?"var(--marca)":"var(--grave)"}" data-t="${saldo>=0?"":"grave"}">
         <div class="rot">${saldo>=0?"Sobrou":"Faltou"}</div><div class="val">${brl(Math.abs(saldo))}</div>
         <div class="pe">${te ? pctTxt(pct(Math.abs(saldo),te)) + " do que entrou" : "sem entradas no período"}</div>
       </div>
@@ -570,7 +570,7 @@ function abaFixas(){
   const maior = Math.max(...porMes.map(x => x.r.total), 0);
   const faixa = blocoColunas(
     "Comprometido por mês",
-    "de " + rotuloMes(meses[0]) + " a " + rotuloMes(meses[meses.length - 1]) + " · laranja = mês mais pesado",
+    "de " + rotuloMes(meses[0]) + " a " + rotuloMes(meses[meses.length - 1]) + " · dourado = mês mais pesado",
     porMes.map(x => ({
       h: pct(x.r.total, maior || 1),
       rot: MESES[+x.m.slice(5) - 1].slice(0, 3),
@@ -1109,8 +1109,63 @@ function render(){
   $("#conteudo").innerHTML = (ABAS.find(a => a.id === ui.aba) || ABAS[0]).fn();
   /* na revisão do extrato o + atrapalha: ele cobriria o botão Importar */
   document.querySelector(".fab").classList.toggle("oculto", ui.aba === "importar");
+  animarEntrada();
   if (ui.aba === "importar"){ ligarSolta(); atualizarBarraImport(); }
   gravarLocal(CHAVE_UI, { aba: ui.aba, periodo: ui.periodo });
+}
+
+/* ============================== MOVIMENTO ============================== */
+function pulsarRapido(){
+  const f = $("#rapido"); if (!f) return;
+  f.classList.remove("salvo"); void f.offsetWidth; f.classList.add("salvo");
+}
+/* só enfeite: entrada escalonada ao trocar de aba/mês, números que contam, selo do Paguei */
+const semMovimento = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+let ultimaVista = "", carimbar = "";
+const valoresAntes = new Map();
+function lerBrl(t){
+  const n = Number(String(t).replace(/[^\d,]/g, "").replace(",", "."));
+  return isFinite(n) ? n : 0;
+}
+function contarValores(novaVista){
+  document.querySelectorAll("#conteudo .kpi .val").forEach(el => {
+    const chave = el.previousElementSibling?.textContent || "";
+    const final = el.textContent, alvo = lerBrl(final);
+    const de = novaVista ? 0 : (valoresAntes.get(chave) ?? alvo);
+    valoresAntes.set(chave, alvo);
+    if (semMovimento() || de === alvo) return;
+    const t0 = performance.now(), dur = 800;
+    const passo = agora => {
+      if (!el.isConnected) return;
+      const p = Math.min(1, (agora - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = p < 1 ? brl(de + (alvo - de) * e) : final;
+      if (p < 1) requestAnimationFrame(passo);
+    };
+    el.textContent = brl(de);
+    requestAnimationFrame(passo);
+  });
+}
+function animarEntrada(){
+  const c = $("#conteudo");
+  const vista = ui.aba + "|" + ui.periodo, nova = vista !== ultimaVista;
+  ultimaVista = vista;
+  if (nova && !semMovimento()){
+    for (const g of [".kpis > *", ".lista > *", ".meses > *", ".insights > *", ".cats > *", ":scope > *"])
+      c.querySelectorAll(g).forEach((el, i) => el.style.setProperty("--i", Math.min(i, 12)));
+    c.querySelectorAll(".colunas .col").forEach((el, i) => el.style.setProperty("--k", i));
+    c.classList.remove("anima"); void c.offsetWidth; c.classList.add("anima");
+    clearTimeout(c._fimAnima);
+    c._fimAnima = setTimeout(() => c.classList.remove("anima"), 1800);
+  }
+  contarValores(nova);
+  if (carimbar){
+    const [f, m] = carimbar.split("|"); carimbar = "";
+    if (semMovimento()) return;
+    const b = c.querySelector(`[data-acao="desfazer-fixa"][data-fixa="${CSS.escape(f)}"][data-mes="${CSS.escape(m)}"]`);
+    const fx = b?.closest(".fx");
+    fx?.querySelector(".selo-sit")?.classList.add("carimbo");
+    fx?.classList.add("acabou-de-pagar");
+  }
 }
 
 /* ============================== FORMULÁRIO ============================== */
@@ -1429,6 +1484,7 @@ document.addEventListener("click", ev => {
       const l = pagar(estado, alvo.dataset.fixa, alvo.dataset.mes, hoje(), uid(), Date.now());
       if (!l) break;
       estado.lancamentos.push(l);
+      carimbar = alvo.dataset.fixa + "|" + alvo.dataset.mes;
       mudou(); torrada(esc(l.descricao) + " marcado como pago.");
       break;
     }
@@ -1627,7 +1683,7 @@ function salvarRapido(){
                             descricao: r.descricao, valor: r.valor, editadoEm: Date.now() });
   if (ui.periodo !== "tudo" && mesDe(r.data) !== ui.periodo) ui.periodo = mesDe(r.data);
   limparRapido();
-  mudou();
+  mudou(); pulsarRapido();
   torrada((r.tipo === "entrada" ? "Entrada de " : "Gasto de ") + brl(r.valor) + " registrado.");
 }
 
