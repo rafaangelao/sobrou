@@ -1,6 +1,6 @@
 {
-  "name": "Painel do Meu Dinheiro",
-  "short_name": "Meu Dinheiro",
+  "name": "Sobrou",
+  "short_name": "Sobrou",
   "description": "Seus gastos, fixas e parcelas, no celular e no computador.",
   "lang": "pt-BR",
   "start_url": "/",

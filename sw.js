@@ -3,7 +3,7 @@
    na hora) e só usa a cópia guardada quando está offline.
    Fontes e a biblioteca do Supabase: têm versão fixa, então a cópia guardada vale.
    O que vai para o Supabase (dados e login) nunca passa por aqui. */
-const CACHE = "painel-v1";
+const CACHE = "painel-v2";
 const BASE = [
   "/", "/manifest.webmanifest",
   "/js/painel.js", "/js/base.js", "/js/config.js", "/js/fixas.js", "/js/juntar.js",

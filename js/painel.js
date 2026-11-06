@@ -1730,7 +1730,7 @@ function mostrarProntoNoSafari(){
   $("#modal").innerHTML = `<div class="veu"><div class="folha pronto-app" role="dialog" aria-modal="true" aria-labelledby="pronto-tit">
     <div class="selo" aria-hidden="true">$</div>
     <h2 id="pronto-tit">Pronto, pode voltar pro app</h2>
-    <p class="sub">Abra o <b>Meu Dinheiro</b> na tela inicial: ele entra sozinho em alguns segundos. Pode fechar esta aba.</p>
+    <p class="sub">Abra o <b>Sobrou</b> na tela inicial: ele entra sozinho em alguns segundos. Pode fechar esta aba.</p>
   </div></div>`;
 }
 
