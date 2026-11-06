@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "painel", "runtimeExecutable": "node", "runtimeArgs": ["ferramentas/servir.mjs"], "port": 4173 }
+  ]
+}

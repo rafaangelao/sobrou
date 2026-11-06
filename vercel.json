@@ -1,1 +1,7 @@
-{"cleanUrls":true,"trailingSlash":false}
+{
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "redirects": [
+    { "source": "/Painel-do-Meu-Dinheiro", "destination": "/", "permanent": false }
+  ]
+}

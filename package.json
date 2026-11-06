@@ -1,0 +1,6 @@
+{
+  "name": "painel-do-meu-dinheiro",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test \"testes/*.test.js\"" }
+}
