@@ -1,4 +1,5 @@
 import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal } from "./base.js";
+import { estadoVazio, migrarV2, juntar } from "./juntar.js";
 
 /* ==========================================================================
    Painel do Meu Dinheiro
@@ -11,35 +12,6 @@ const DIAS_SEM = ["domingo","segunda","terça","quarta","quinta","sexta","sábad
 /* Não sugerimos cortar estas: dízimo é decisão pessoal, poupança não é gasto. */
 const NAO_CORTAR = ["Igreja","Guardar dinheiro"];
 
-const SEMENTE = () => {
-  const g = [
-    ["2026-07-03","Comida/Fast Food","dívida cheirin bão",38.24],
-    ["2026-07-03","Comida/Fast Food","comida feira vide",30],
-    ["2026-07-04","Comida/Fast Food","espetinhos para célula",50],
-    ["2026-07-04","Presentes","dívida calça e presente do pai",120],
-    ["2026-07-04","Presentes","dívida presente da mãe",100],
-    ["2026-07-04","Transporte","uber",6.5],
-    ["2026-07-05","Comida/Fast Food","lanche pra gaby",24.72],
-    ["2026-07-06","Transporte","onibus pro trabalho",5.9],
-    ["2026-07-06","Lazer","fut",20],
-    ["2026-07-07","Comida/Fast Food","docinho pra gaby",38.11],
-    ["2026-07-07","Transporte","busão",5.9],
-    ["2026-07-08","Igreja","Dízimo",145.83],
-    ["2026-07-08","Lazer","despedida de solteiro",21],
-    ["2026-07-08","Comida/Fast Food","tortinha",5.9],
-    ["2026-07-08","Coisas pra mim","camisa riachuelo",99.99],
-  ].map(([data,categoria,descricao,valor]) => ({ id:uid(), tipo:"gasto", data, categoria, descricao, valor }));
-  const e = [["2026-07-01","Salário líquido",1495.54]]
-    .map(([data,descricao,valor]) => ({ id:uid(), tipo:"entrada", data, categoria:"", descricao, valor }));
-  return {
-    v: 1,
-    atualizadoEm: Date.now(),
-    lancamentos: [...g, ...e],
-    categorias: CATS_BASE.map(c => c.nome),
-    metas: {},
-    regras: {},
-  };
-};
 
 /* ------------------------------ utilidades ------------------------------ */
 const $  = (s, r=document) => r.querySelector(s);
@@ -72,14 +44,9 @@ function lerLocal(chave){ try { const t = localStorage.getItem(chave); return t 
 function gravarLocal(chave, valor){ try { localStorage.setItem(chave, JSON.stringify(valor)); } catch {} }
 
 function carregarEstado(){
-  const base = lerLocal(CHAVE_DADOS) || SEMENTE();
-  base.lancamentos ||= [];
-  base.categorias  ||= CATS_BASE.map(c => c.nome);
-  base.metas       ||= {};
-  base.regras      ||= {};   /* comerciante → categoria, aprendido nas importações */
-  for (const l of base.lancamentos)
-    if (l.categoria && !base.categorias.includes(l.categoria)) base.categorias.push(l.categoria);
-  estado = base;
+  estado = migrarV2(lerLocal(CHAVE_DADOS) || estadoVazio());
+  for (const l of estado.lancamentos)
+    if (l.categoria && !estado.categorias.includes(l.categoria)) estado.categorias.push(l.categoria);
   gravarLocal(CHAVE_DADOS, estado);
 }
 
@@ -1050,7 +1017,7 @@ function abrirForm(id){
       if (!estado.categorias.includes(categoria)) estado.categorias.push(categoria);
     }
 
-    const reg = { tipo:d.tipo, data:d.data, categoria, descricao:String(d.descricao).trim(), valor:Math.round(valor*100)/100 };
+    const reg = { tipo:d.tipo, data:d.data, categoria, descricao:String(d.descricao).trim(), valor:Math.round(valor*100)/100, editadoEm: Date.now() };
     if (d.id){
       const i = estado.lancamentos.findIndex(x => x.id === d.id);
       estado.lancamentos[i] = { ...estado.lancamentos[i], ...reg };
@@ -1128,6 +1095,7 @@ document.addEventListener("click", ev => {
       const l = estado.lancamentos.find(x => x.id === alvo.dataset.id);
       if (!l) break;
       confirmar("Apagar lançamento?", `<b>${esc(l.descricao)}</b> — ${brl(l.valor)} em ${rotuloData(l.data)}. Isso não volta.`, () => {
+        estado.apagados[l.id] = Date.now();
         estado.lancamentos = estado.lancamentos.filter(x => x.id !== l.id);
         mudou(); torrada("Lançamento apagado.");
       });
@@ -1174,7 +1142,7 @@ document.addEventListener("click", ev => {
         estado.lancamentos.push({
           id: uid(), tipo: r.tipo, data: r.data,
           categoria: r.tipo === "gasto" ? r.categoria : "",
-          descricao: r.descricao, valor: r.valor,
+          descricao: r.descricao, valor: r.valor, editadoEm: Date.now(),
         });
       }
       const n = escolhidos.length;
