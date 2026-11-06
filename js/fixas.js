@@ -34,7 +34,8 @@ export function ocorrencias(fixas, lancamentos, mes, hoje){
       parcela: parcelaNoMes(f, mes),
       valor: pago ? pago.valor : f.valor,
       vencimento: venc,
-      situacao: pago ? "pago" : venc < hoje ? "atrasado" : "a-pagar",
+      /* mês antes do cadastro ("desde"): não dá pra saber se foi pago, então não é atraso */
+      situacao: pago ? "pago" : venc < hoje && !(f.desde && mes < f.desde) ? "atrasado" : "a-pagar",
       lancamento: pago,
     });
   }
@@ -66,7 +67,7 @@ export function pendentesAnteriores(fixas, lancamentos, hoje){
   let m = fixas.map(f => f.inicio).sort()[0];
   const out = [];
   for (; mesesEntre(m, atual) > 0; m = somarMeses(m, 1))
-    out.push(...ocorrencias(fixas, lancamentos, m, hoje).filter(o => o.situacao !== "pago"));
+    out.push(...ocorrencias(fixas, lancamentos, m, hoje).filter(o => o.situacao !== "pago" && !(o.fixa.desde && m < o.fixa.desde)));
   return out;
 }
 

@@ -1,7 +1,7 @@
 import { CATS_BASE } from "./base.js";
 
 export function estadoVazio(agora = Date.now()){
-  return { v:2, atualizadoEm: agora, lancamentos:[], fixas:[], apagados:{}, categorias: CATS_BASE.map(c => c.nome), metas:{}, regras:{} };
+  return { v:2, atualizadoEm: agora, lancamentos:[], fixas:[], apagados:{}, categorias: CATS_BASE.map(c => c.nome), metas:{}, metasEm:0, regras:{}, regrasEm:0 };
 }
 
 export function migrarV2(e, agora = Date.now()){
@@ -14,6 +14,9 @@ export function migrarV2(e, agora = Date.now()){
   x.categorias = [...(x.categorias || CATS_BASE.map(c => c.nome))];
   x.metas = { ...(x.metas || {}) };
   x.regras = { ...(x.regras || {}) };
+  /* cada objeto tem o próprio carimbo: vazio nunca vence; dado antigo leva o carimbo do estado */
+  x.metasEm ??= Object.keys(x.metas).length ? x.atualizadoEm : 0;
+  x.regrasEm ??= Object.keys(x.regras).length ? x.atualizadoEm : 0;
   return x;
 }
 
@@ -33,7 +36,8 @@ export function juntar(local, nuvem){
   const N = migrarV2(nuvem);
   const apagados = { ...N.apagados };
   for (const [id, t] of Object.entries(L.apagados)) apagados[id] = Math.max(apagados[id] || 0, t);
-  const recente = (L.atualizadoEm || 0) >= (N.atualizadoEm || 0) ? L : N;
+  const metasDe = (L.metasEm || 0) >= (N.metasEm || 0) ? L : N;
+  const regrasDe = (L.regrasEm || 0) >= (N.regrasEm || 0) ? L : N;
   const categorias = [...L.categorias];
   for (const c of N.categorias) if (!categorias.includes(c)) categorias.push(c);
   return {
@@ -43,7 +47,9 @@ export function juntar(local, nuvem){
     fixas: unirLista(L.fixas, N.fixas, apagados),
     apagados,
     categorias,
-    metas: { ...recente.metas },
-    regras: { ...recente.regras },
+    metas: { ...metasDe.metas },
+    metasEm: metasDe.metasEm || 0,
+    regras: { ...regrasDe.regras },
+    regrasEm: regrasDe.regrasEm || 0,
   };
 }

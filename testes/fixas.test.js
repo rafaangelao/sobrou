@@ -101,3 +101,14 @@ test("linha do extrato que já é o pagamento lançado de uma fixa", () => {
   assert.equal(F.jaPagaNoExtrato({ descricao:"LOJA CEL PARCELA 03/10", valor:151 }, ocs, chave), null);
   assert.equal(F.jaPagaNoExtrato({ descricao:"PIX ALUGUEL APTO", valor:900 }, ocs, chave), null);
 });
+
+test("parcelado cadastrado no meio: meses antes do cadastro não ficam atrasados", () => {
+  const cel = { ...celular, desde: "2026-11" };           /* 1ª em set, cadastrado em nov */
+  assert.deepEqual(F.pendentesAnteriores([cel], [], "2026-11-06"), []);
+  const out = F.ocorrencias([cel], [], "2026-10", "2026-11-06");
+  assert.notEqual(out[0].situacao, "atrasado");
+  /* sem "desde" (dados antigos) continua como antes */
+  assert.equal(F.pendentesAnteriores([celular], [], "2026-11-06").length, 2);
+  /* a partir do mês do cadastro, atraso vale normalmente */
+  assert.equal(F.ocorrencias([cel], [], "2026-11", "2026-11-20")[0].situacao, "atrasado");
+});

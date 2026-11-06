@@ -53,13 +53,38 @@ test("categorias: une mantendo a ordem local", () => {
   assert.deepEqual(r.categorias, ["A", "B", "C"]);
 });
 
-test("metas e regras: vale o lado mais recente inteiro", () => {
-  const velho = base({ atualizadoEm: 10, regras:{ ifood:"Comida/Fast Food" }, metas:{ Lazer: 100 } });
-  const novo  = base({ atualizadoEm: 20, regras:{}, metas:{} });
+test("metas e regras: vale o objeto mexido por último (Esquecer tudo propaga)", () => {
+  const velho = base({ atualizadoEm: 10, regras:{ ifood:"Comida/Fast Food" }, regrasEm: 10, metas:{ Lazer: 100 }, metasEm: 10 });
+  const novo  = base({ atualizadoEm: 20, regras:{}, regrasEm: 20, metas:{}, metasEm: 20 });
   const r = juntar(velho, novo);
   assert.deepEqual(r.regras, {});
   assert.deepEqual(r.metas, {});
   assert.equal(r.atualizadoEm, 20);
+  assert.equal(r.metasEm, 20);
+  assert.equal(r.regrasEm, 20);
+});
+
+test("aparelho novo (vazio e mais recente) não apaga metas e regras do outro", () => {
+  const pc = base({ atualizadoEm: 10, regras:{ ifood:"Comida/Fast Food" }, regrasEm: 10, metas:{ Lazer: 200 }, metasEm: 10 });
+  const celular = estadoVazio(999);
+  assert.deepEqual(juntar(celular, pc).metas, { Lazer: 200 });
+  assert.deepEqual(juntar(celular, pc).regras, { ifood:"Comida/Fast Food" });
+  assert.deepEqual(juntar(pc, celular).metas, { Lazer: 200 });
+});
+
+test("editar um lançamento não faz as metas antigas daquele lado vencerem", () => {
+  const a = base({ atualizadoEm: 50, metas:{ Lazer: 100 }, metasEm: 5 });
+  const b = base({ atualizadoEm: 20, metas:{ Lazer: 300 }, metasEm: 15 });
+  assert.deepEqual(juntar(a, b).metas, { Lazer: 300 });
+});
+
+test("migrarV2 carimba metas/regras de dados antigos e zera quando vazios", () => {
+  const v1 = migrarV2({ v:1, atualizadoEm: 50, lancamentos:[], metas:{ Lazer: 1 }, regras:{} });
+  assert.equal(v1.metasEm, 50);
+  assert.equal(v1.regrasEm, 0);
+  const vazio = estadoVazio(77);
+  assert.equal(vazio.metasEm, 0);
+  assert.equal(vazio.regrasEm, 0);
 });
 
 test("sem nuvem: devolve o local migrado", () => {

@@ -65,3 +65,13 @@ test("erro de rede sobe como exceção", async () => {
   const api = { async ler(){ throw new Error("offline"); } };
   await assert.rejects(sincronizar(api, est(["a"])), /offline/);
 });
+
+test("celular novo entra depois do PC: metas e regras do PC sobrevivem na nuvem", async () => {
+  const pc = { ...est(["pc1"], 10), metas:{ Lazer: 200 }, metasEm: 10, regras:{ ifood:"Comida/Fast Food" }, regrasEm: 10 };
+  const n = nuvemFalsa({ dados: pc, versao: 2 });
+  const r = await sincronizar(n.api, estadoVazio(999));
+  assert.equal(r.ok, true);
+  assert.deepEqual(n.linha.dados.metas, { Lazer: 200 });
+  assert.deepEqual(n.linha.dados.regras, { ifood:"Comida/Fast Food" });
+  assert.deepEqual(r.estado.lancamentos.map(x => x.id), ["pc1"]);
+});

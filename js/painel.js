@@ -48,6 +48,7 @@ let estado = null;
 let ui = { aba:"visao", periodo:null, tipoForm:"gasto", cortes:{}, lote:null };
 let sujo = false, publicando = false, falhou = false, timerSync = 0, mudancas = 0;
 let usuario = null;
+let ultimoToqueFixa = 0;   /* "Paguei" e "Desfazer" trocam de lugar: um toque duplo não pode pagar e desfazer */
 
 function lerLocal(chave){ try { const t = localStorage.getItem(chave); return t ? JSON.parse(t) : null; } catch { return null; } }
 function gravarLocal(chave, valor){ try { localStorage.setItem(chave, JSON.stringify(valor)); } catch {} }
@@ -1316,8 +1317,8 @@ function abrirFormFixa(id, pre = {}){
 
     if (f){
       const i = estado.fixas.findIndex(x => x.id === f.id);
-      estado.fixas[i] = { id: f.id, ...reg };
-    } else estado.fixas.push({ id: uid(), ...reg });
+      estado.fixas[i] = { id: f.id, ...(f.desde ? { desde: f.desde } : {}), ...reg };
+    } else estado.fixas.push({ id: uid(), desde: mesDe(hoje()), ...reg });
     fecharModal();
     ui.aba = "fixas";
     mudou();
@@ -1423,6 +1424,8 @@ document.addEventListener("click", ev => {
       break;
     }
     case "paguei": {
+      if (Date.now() - ultimoToqueFixa < 700) break;
+      ultimoToqueFixa = Date.now();
       const l = pagar(estado, alvo.dataset.fixa, alvo.dataset.mes, hoje(), uid(), Date.now());
       if (!l) break;
       estado.lancamentos.push(l);
@@ -1430,6 +1433,8 @@ document.addEventListener("click", ev => {
       break;
     }
     case "desfazer-fixa": {
+      if (Date.now() - ultimoToqueFixa < 700) break;
+      ultimoToqueFixa = Date.now();
       const l = estado.lancamentos.find(x => x.fixaId === alvo.dataset.fixa && x.fixaMes === alvo.dataset.mes);
       if (!l) break;
       estado.lancamentos = estado.lancamentos.filter(x => x.id !== l.id);
@@ -1455,7 +1460,7 @@ document.addEventListener("click", ev => {
     case "esquecer": {
       const n = Object.keys(estado.regras || {}).length;
       confirmar("Esquecer o que foi aprendido?", `São <b>${n}</b> ${n===1?"regra":"regras"} de categoria. Seus lançamentos continuam intactos — só o reconhecimento automático volta à estaca zero.`, () => {
-        estado.regras = {}; mudou(); torrada("Regras apagadas.");
+        estado.regras = {}; estado.regrasEm = Date.now(); mudou(); torrada("Regras apagadas.");
       });
       break;
     }
@@ -1471,7 +1476,7 @@ document.addEventListener("click", ev => {
         if (r.tipo === "gasto"){
           if (!estado.categorias.includes(r.categoria)) estado.categorias.push(r.categoria);
           const k = lembrar ? chaveComerciante(r.descricao) : "";
-          if (k) estado.regras[k] = r.categoria;
+          if (k){ estado.regras[k] = r.categoria; estado.regrasEm = Date.now(); }
         }
         const ehFixa = r.tipo === "gasto" && r.fixa &&
           !estado.lancamentos.some(l => l.fixaId === r.fixa.fixaId && l.fixaMes === r.fixa.fixaMes);
@@ -1547,6 +1552,7 @@ document.addEventListener("change", ev => {
   const v = Number(m.value);
   if (v > 0) estado.metas[m.dataset.meta] = Math.round(v*100)/100;
   else delete estado.metas[m.dataset.meta];
+  estado.metasEm = Date.now();
   mudou();
 });
 
@@ -1615,7 +1621,7 @@ function salvarRapido(){
   if (r.tipo === "gasto" && !r.categoria){ $("#rapido-cat")?.focus(); return torrada("Escolha a categoria antes de salvar."); }
   if (r.tipo === "gasto"){
     if (!estado.categorias.includes(r.categoria)) estado.categorias.push(r.categoria);
-    if (rapidoCat){ const k = chaveComerciante(r.descricao); if (k) estado.regras[k] = r.categoria; }
+    if (rapidoCat){ const k = chaveComerciante(r.descricao); if (k){ estado.regras[k] = r.categoria; estado.regrasEm = Date.now(); } }
   }
   estado.lancamentos.push({ id: uid(), tipo: r.tipo, data: r.data, categoria: r.tipo === "gasto" ? r.categoria : "",
                             descricao: r.descricao, valor: r.valor, editadoEm: Date.now() });
