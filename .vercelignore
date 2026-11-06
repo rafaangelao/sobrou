@@ -5,3 +5,7 @@ ferramentas
 package.json
 .superpowers
 .git
+.env*
+.vercel
+.gitignore
+.gitattributes
