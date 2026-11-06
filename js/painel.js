@@ -1,5 +1,7 @@
-import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal } from "./base.js";
+import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses } from "./base.js";
 import { estadoVazio, migrarV2, juntar } from "./juntar.js";
+import { ATE_PADRAO, ultimoMes, parcelaNoMes, ocorrencias, resumoDoMes, mesesDaFaixa,
+         pendentesAnteriores, descricaoPagamento, pagar, casarComFixa } from "./fixas.js";
 
 /* ==========================================================================
    Painel do Meu Dinheiro
@@ -30,6 +32,9 @@ const partes = d => d.split("-").map(Number);
 const diaSemana = d => { const [a,m,dd] = partes(d); return new Date(a, m-1, dd).getDay(); };
 const rotuloMes = p => { const [a,m] = p.split("-"); return MESES[+m-1] + " de " + a; };
 const rotuloData = d => { const [a,m,dd] = partes(d); return String(dd).padStart(2,"0") + " de " + MESES[m-1]; };
+const abrevMes = p => MESES[+p.slice(5) - 1].slice(0, 3) + "/" + p.slice(0, 4);
+const ICONE_EDITAR = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+const ICONE_APAGAR = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>`;
 const corDe = nome => (CATS_BASE.find(c => c.nome === nome) || { cor:"var(--c0)" }).cor;
 
 /* ------------------------------ estado ---------------------------------- */
@@ -454,14 +459,108 @@ function itemHTML(l){
       <span class="valor ${mais ? "mais" : ""}">${mais ? "+" : "−"}${brl(l.valor)}</span>
       <span class="acoes">
         <button class="icone" type="button" data-acao="editar" data-id="${l.id}" aria-label="Editar ${esc(l.descricao)}">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          ${ICONE_EDITAR}
         </button>
         <button class="icone perigo" type="button" data-acao="apagar" data-id="${l.id}" aria-label="Apagar ${esc(l.descricao)}">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+          ${ICONE_APAGAR}
         </button>
       </span>
     </div>`;
 }
+
+/* ========================= ABA: FIXAS E PARCELAS ========================= */
+const ROT_SIT = { "pago": "pago", "a-pagar": "a pagar", "atrasado": "atrasado" };
+
+function abaFixas(){
+  const hj = hoje();
+  const botao = `<button class="btn btn-forte" type="button" data-acao="nova-fixa">+ Nova fixa ou parcela</button>`;
+  if (!estado.fixas.length) return `
+    <section class="cartao"><div class="vazio">
+      <h3>Nenhuma conta fixa ou parcela ainda</h3>
+      <p>Cadastre uma vez o aluguel, a internet ou aquela compra em 10x. O painel mostra quanto já está comprometido em cada mês até dezembro de 2027 e avisa perto do vencimento.</p>
+      <div style="margin-top:18px">${botao}</div>
+    </div></section>`;
+
+  const meses = mesesDaFaixa(hj);
+  const porMes = meses.map(m => {
+    const ocs = ocorrencias(estado.fixas, estado.lancamentos, m, hj);
+    return { m, ocs, r: resumoDoMes(ocs) };
+  });
+  const maior = Math.max(...porMes.map(x => x.r.total), 0);
+  const faixa = blocoColunas(
+    "Comprometido por mês",
+    "de " + rotuloMes(meses[0]) + " a " + rotuloMes(meses[meses.length - 1]) + " · laranja = mês mais pesado",
+    porMes.map(x => ({
+      h: pct(x.r.total, maior || 1),
+      rot: MESES[+x.m.slice(5) - 1].slice(0, 3),
+      dica: rotuloMes(x.m) + ": " + brl(x.r.total),
+      hoje: maior > 0 && x.r.total === maior,
+    })),
+    1
+  );
+
+  const pend = pendentesAnteriores(estado.fixas, estado.lancamentos, hj);
+  const blocoPend = pend.length ? `
+    <section class="cartao">
+      <h2>Pendentes de meses anteriores <small>${pend.length} sem marcar como pago</small></h2>
+      <div>${pend.map(fxHTML).join("")}</div>
+    </section>` : "";
+
+  const cartoes = porMes.map(({ m, ocs, r }) => `
+    <section class="cartao mes">
+      <h3>${rotuloMes(m)} <span>${brl(r.total)}</span></h3>
+      <div class="pe-mes">${ocs.length ? `pago ${brl(r.pago)} · falta ${brl(r.aPagar)}` : "nada previsto"}</div>
+      <div>${ocs.map(fxHTML).join("")}</div>
+    </section>`).join("");
+
+  return faixa + blocoPend + `<div class="meses">${cartoes}</div>` + blocoCadastradas(botao);
+}
+
+function fxHTML(o){
+  const u = ultimoMes(o.fixa);
+  const termina = u && u > ATE_PADRAO ? " · termina em " + abrevMes(u) : "";
+  const acao = o.situacao === "pago"
+    ? `<button class="btn btn-txt" type="button" data-acao="desfazer-fixa" data-fixa="${o.fixa.id}" data-mes="${o.mes}">Desfazer</button>`
+    : `<button class="btn" type="button" data-acao="paguei" data-fixa="${o.fixa.id}" data-mes="${o.mes}">Paguei</button>`;
+  return `
+    <div class="fx">
+      <div>
+        <b>${esc(descricaoPagamento(o))}</b><span class="selo-sit" data-s="${o.situacao}">${ROT_SIT[o.situacao]}</span><br>
+        <small>${esc(o.fixa.categoria)} · vence ${rotuloData(o.vencimento)}${termina}</small>
+      </div>
+      <div style="text-align:right"><div class="valor">${brl(o.valor)}</div>${acao}</div>
+    </div>`;
+}
+
+function resumoFixa(f){
+  const atual = mesDe(hoje()), u = ultimoMes(f);
+  if (f.tipo === "parcelado"){
+    const k = parcelaNoMes(f, atual);
+    const agora = k ? ` · ${k}ª em ${abrevMes(atual)}` : atual < f.inicio ? ` · começa em ${abrevMes(f.inicio)}` : " · já terminou";
+    return `${f.parcelas}x de ${brl(f.valor)}${agora} · última em ${abrevMes(u)} · dia ${f.dia}`;
+  }
+  return `todo mês desde ${abrevMes(f.inicio)}${u ? " até " + abrevMes(u) : ""} · dia ${f.dia}`;
+}
+
+function blocoCadastradas(botao){
+  const ls = estado.fixas.slice().sort((a, b) => a.nome.localeCompare(b.nome));
+  return `
+    <section class="cartao">
+      <h2>Suas fixas e parcelas <small>${ls.length} cadastrada${ls.length === 1 ? "" : "s"}</small></h2>
+      <div class="lista">${ls.map(f => `
+        <div class="item">
+          <i class="pastilha" style="--c:${corDe(f.categoria)}"></i>
+          <div class="item-txt"><b>${esc(f.nome)}</b><small>${esc(resumoFixa(f))}</small></div>
+          <span class="valor">${brl(f.valor)}</span>
+          <span class="acoes">
+            <button class="icone" type="button" data-acao="editar-fixa" data-id="${f.id}" aria-label="Editar ${esc(f.nome)}">${ICONE_EDITAR}</button>
+            <button class="icone perigo" type="button" data-acao="apagar-fixa" data-id="${f.id}" aria-label="Apagar ${esc(f.nome)}">${ICONE_APAGAR}</button>
+          </span>
+        </div>`).join("")}</div>
+      <div style="margin-top:14px">${botao}</div>
+    </section>`;
+}
+
 
 /* =========================== ABA: ECONOMIZAR ============================= */
 function abaEconomizar(){
@@ -898,6 +997,7 @@ function vazio(t, p){
 const ABAS = [
   { id:"visao",       rot:"Visão geral",  fn:abaVisao },
   { id:"lancamentos", rot:"Lançamentos",  fn:abaLancamentos },
+  { id:"fixas",       rot:"Fixas e parcelas", fn:abaFixas },
   { id:"importar",    rot:"Importar",     fn:abaImportar },
   { id:"economizar",  rot:"Economizar",   fn:abaEconomizar },
   { id:"metas",       rot:"Metas",        fn:abaMetas },
@@ -1031,6 +1131,120 @@ function abrirForm(id){
   });
 }
 
+function dicaFixa(d){
+  if (!(d.valor > 0) || !/^\d{4}-\d{2}$/.test(d.inicio || "")) return "";
+  if (d.tipo === "parcelado"){
+    if (!(d.parcelas >= 2)) return "";
+    const f = { tipo: "parcelado", inicio: d.inicio, parcelas: Math.floor(d.parcelas) };
+    const atual = mesDe(hoje()), k = parcelaNoMes(f, atual);
+    return `${f.parcelas}x de ${brl(d.valor)}${k ? ` · ${k}ª em ${abrevMes(atual)}` : ""} · última em ${abrevMes(ultimoMes(f))} · total ${brl(d.valor * f.parcelas)}`;
+  }
+  return `${brl(d.valor)} todo mês a partir de ${abrevMes(d.inicio)}${d.fim ? " até " + abrevMes(d.fim) : ""}`;
+}
+
+function abrirFormFixa(id, pre = {}){
+  const f = id ? estado.fixas.find(x => x.id === id) : null;
+  const v = { tipo: "mensal", nome: "", valor: "", categoria: "Contas fixas", dia: 10, inicio: mesDe(hoje()), fim: "", parcelas: "", ...(f || {}), ...pre };
+  const opcoes = estado.categorias.map(c => `<option value="${esc(c)}"${v.categoria === c ? " selected" : ""}>${esc(c)}</option>`).join("");
+  const parc = v.tipo === "parcelado";
+
+  $("#modal").innerHTML = `
+    <div class="veu" data-acao="fechar">
+      <form class="folha" id="form-fixa" novalidate>
+        <h2>${f ? "Editar fixa ou parcela" : "Nova fixa ou parcela"}</h2>
+        <div class="seletor-tipo">
+          <button type="button" data-tipo-fixa="mensal" aria-pressed="${!parc}">Todo mês</button>
+          <button type="button" data-tipo-fixa="parcelado" aria-pressed="${parc}">Parcelado</button>
+        </div>
+        <input type="hidden" name="tipo" value="${v.tipo}">
+        <div class="campo">
+          <label for="x-nome">Nome</label>
+          <input id="x-nome" name="nome" type="text" maxlength="40" required placeholder="Ex.: Aluguel, Celular" value="${esc(v.nome)}">
+        </div>
+        <div class="duo">
+          <div class="campo">
+            <label for="x-valor" id="rot-valor">${parc ? "Valor de cada parcela" : "Valor por mês"}</label>
+            <input id="x-valor" name="valor" type="number" step="0.01" min="0" inputmode="decimal" required value="${v.valor}">
+          </div>
+          <div class="campo">
+            <label for="x-dia">Dia do vencimento</label>
+            <input id="x-dia" name="dia" type="number" min="1" max="31" inputmode="numeric" required value="${v.dia}">
+          </div>
+        </div>
+        <div class="campo">
+          <label for="x-cat">Categoria</label>
+          <select id="x-cat" name="categoria">${opcoes}</select>
+        </div>
+        <div class="duo">
+          <div class="campo">
+            <label for="x-inicio" id="rot-inicio">${parc ? "Mês da 1ª parcela" : "Começa em"}</label>
+            <input id="x-inicio" name="inicio" type="month" required value="${v.inicio}">
+          </div>
+          <div class="campo" data-so="mensal" ${parc ? "hidden" : ""}>
+            <label for="x-fim">Termina em (opcional)</label>
+            <input id="x-fim" name="fim" type="month" value="${v.fim || ""}">
+          </div>
+          <div class="campo" data-so="parcelado" ${parc ? "" : "hidden"}>
+            <label for="x-parc">Quantas parcelas</label>
+            <input id="x-parc" name="parcelas" type="number" min="2" max="120" inputmode="numeric" value="${v.parcelas || ""}">
+          </div>
+        </div>
+        <p class="sub" id="x-dica" style="margin:4px 0 0"></p>
+        <div class="folha-pe">
+          <button type="button" class="btn" data-acao="fechar">Cancelar</button>
+          <button type="submit" class="btn btn-forte">${f ? "Salvar" : "Cadastrar"}</button>
+        </div>
+      </form>
+    </div>`;
+
+  const form = $("#form-fixa");
+  const lerForm = () => {
+    const d = Object.fromEntries(new FormData(form));
+    return { ...d, valor: Number(String(d.valor).replace(",", ".")), dia: Number(d.dia), parcelas: Number(d.parcelas) };
+  };
+  const dica = () => { $("#x-dica").textContent = dicaFixa(lerForm()); };
+
+  form.addEventListener("click", ev => {
+    const b = ev.target.closest("[data-tipo-fixa]");
+    if (!b) return;
+    const t = b.dataset.tipoFixa;
+    form.tipo.value = t;
+    form.querySelectorAll("[data-tipo-fixa]").forEach(x => x.setAttribute("aria-pressed", x.dataset.tipoFixa === t));
+    form.querySelectorAll("[data-so]").forEach(x => { x.hidden = x.dataset.so !== t; });
+    $("#rot-valor").textContent = t === "parcelado" ? "Valor de cada parcela" : "Valor por mês";
+    $("#rot-inicio").textContent = t === "parcelado" ? "Mês da 1ª parcela" : "Começa em";
+    dica();
+  });
+  form.addEventListener("input", dica);
+  dica();
+  setTimeout(() => $("#x-nome").focus(), 40);
+
+  form.addEventListener("submit", ev => {
+    ev.preventDefault();
+    const d = lerForm();
+    if (!String(d.nome).trim()) return torrada("Dê um nome.");
+    if (!(d.valor > 0)) return torrada("Coloque um valor maior que zero.");
+    if (!(d.dia >= 1 && d.dia <= 31)) return torrada("O dia vai de 1 a 31.");
+    if (!/^\d{4}-\d{2}$/.test(d.inicio)) return torrada("Escolha o mês de início.");
+    if (d.tipo === "parcelado" && !(d.parcelas >= 2 && d.parcelas <= 120)) return torrada("Parcelas: de 2 a 120.");
+    if (d.tipo === "mensal" && d.fim && d.fim < d.inicio) return torrada("O fim não pode ser antes do início.");
+
+    const reg = { nome: String(d.nome).trim(), valor: Math.round(d.valor * 100) / 100, categoria: d.categoria,
+                  dia: Math.floor(d.dia), tipo: d.tipo, inicio: d.inicio, editadoEm: Date.now() };
+    if (d.tipo === "mensal"){ if (d.fim) reg.fim = d.fim; }
+    else reg.parcelas = Math.floor(d.parcelas);
+
+    if (f){
+      const i = estado.fixas.findIndex(x => x.id === f.id);
+      estado.fixas[i] = { id: f.id, ...reg };
+    } else estado.fixas.push({ id: uid(), ...reg });
+    fecharModal();
+    ui.aba = "fixas";
+    mudou();
+    torrada(f ? "Atualizado." : "Cadastrado. Já aparece nos meses.");
+  });
+}
+
 const fecharModal = () => { $("#modal").innerHTML = ""; };
 
 function confirmar(titulo, texto, aoConfirmar){
@@ -1104,6 +1318,33 @@ document.addEventListener("click", ev => {
     case "ir":       ui.aba = alvo.dataset.aba; render(); window.scrollTo({ top:0, behavior:"smooth" }); break;
     case "fechar":   fecharModal(); break;
     case "csv":      baixarCSV(); break;
+    case "nova-fixa":   abrirFormFixa(null); break;
+    case "editar-fixa": abrirFormFixa(alvo.dataset.id); break;
+    case "apagar-fixa": {
+      const f = estado.fixas.find(x => x.id === alvo.dataset.id);
+      if (!f) break;
+      confirmar("Apagar esta fixa?", `<b>${esc(f.nome)}</b> some dos meses ainda não pagos. O que você já marcou como pago continua nos lançamentos.`, () => {
+        estado.fixas = estado.fixas.filter(x => x.id !== f.id);
+        estado.apagados[f.id] = Date.now();
+        mudou(); torrada("Apagada.");
+      });
+      break;
+    }
+    case "paguei": {
+      const l = pagar(estado, alvo.dataset.fixa, alvo.dataset.mes, hoje(), uid(), Date.now());
+      if (!l) break;
+      estado.lancamentos.push(l);
+      mudou(); torrada(esc(l.descricao) + " marcado como pago.");
+      break;
+    }
+    case "desfazer-fixa": {
+      const l = estado.lancamentos.find(x => x.fixaId === alvo.dataset.fixa && x.fixaMes === alvo.dataset.mes);
+      if (!l) break;
+      estado.lancamentos = estado.lancamentos.filter(x => x.id !== l.id);
+      estado.apagados[l.id] = Date.now();
+      mudou(); torrada("Pronto, voltou pra a pagar.");
+      break;
+    }
 
     case "ler-extrato": processarExtrato($("#txt-extrato")?.value || ""); break;
     case "cancelar-lote": ui.lote = null; render(); break;
