@@ -7,6 +7,7 @@ import { telaInicio, folhaDetalhe } from "./telas/inicio.js";
 import { telaExtrato, listaExtrato, filtrarExtrato } from "./telas/extrato.js";
 import { telaMais, telaConta, voltarMais } from "./telas/mais.js";
 import { porCategoria, NAO_CORTAR } from "./raiox.js";
+import { semMovimento, desenharFaixa, botaoCheck, comTransicao, arrastarParaFechar, ligarArrastarLinhas, trocarComDesfoque } from "./movimento.js";
 import { lerLinha } from "./rapido.js";
 import * as nuvem from "./nuvem.js";
 import { novoCodigo, urlDeRetorno, codigoDaUrl, pedidoValido } from "./pareamento.js";
@@ -945,8 +946,7 @@ function render(){
 
 /* ============================== MOVIMENTO ============================== */
 /* só enfeite: entrada escalonada ao trocar de aba/mês, números que contam, selo do Paguei */
-const semMovimento = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-let ultimaVista = "", carimbar = "";
+let ultimaVista = "", ultimaAba = "", carimbar = "";
 const valoresAntes = new Map();
 function lerBrl(t){
   const n = Number(String(t).replace(/[^\d,]/g, "").replace(",", "."));
@@ -974,6 +974,7 @@ function animarEntrada(){
   const c = $("#conteudo");
   const vista = ui.aba + "|" + ui.periodo, nova = vista !== ultimaVista;
   ultimaVista = vista;
+  const trocouAba = ultimaAba !== ui.aba; ultimaAba = ui.aba;
   if (nova && !semMovimento()){
     for (const g of [".kpis > *", ".lista > *", ".meses > *", ".insights > *", ".cats > *", ".linhas > *", ".menu > *", "#extrato-lista > *", ":scope > *"])
       c.querySelectorAll(g).forEach((el, i) => el.style.setProperty("--i", Math.min(i, 12)));
@@ -982,7 +983,13 @@ function animarEntrada(){
     clearTimeout(c._fimAnima);
     c._fimAnima = setTimeout(() => c.classList.remove("anima"), 1800);
   }
-  contarValores(nova);
+  contarValores(trocouAba);
+  desenharFaixa(c, trocouAba);
+  c.querySelectorAll(".semanas .sem").forEach((el, i) => el.style.setProperty("--k", i));
+  if (ultimoNovo){
+    c.querySelector(`.lin[data-id="${CSS.escape(ultimoNovo)}"]`)?.classList.add("nova");
+    ultimoNovo = "";
+  }
   if (carimbar){
     const [f, m] = carimbar.split("|"); carimbar = "";
     if (semMovimento()) return;
@@ -1250,10 +1257,11 @@ async function baixarCSV(){
 function abrirFolha(html){
   $("#modal").innerHTML = `<div class="veu" data-acao="fechar">${html}</div>`;
   marcarValores($("#modal"));
+  const f = $("#modal .folha"); if (f) arrastarParaFechar(f, fecharModal);
 }
-function abrirDetalhe(tipo, chave){
+function abrirDetalhe(tipo, chave, origem){
   const html = folhaDetalhe({ lancamentos: estado.lancamentos, periodo: ui.periodo, hoje: hoje(), tipo, chave });
-  if (html) abrirFolha(html);
+  if (html) comTransicao(origem, () => abrirFolha(html));
 }
 function abrirTodasCats(){
   const gastos = gastosDe(doPeriodo()), tg = somar(gastos);
@@ -1279,9 +1287,11 @@ function pintarOlho(){
 }
 function alternarOcultar(){
   const o = !document.body.classList.contains("ocultar");
-  document.body.classList.toggle("ocultar", o);
-  gravarLocal(CHAVE_OCULTAR, o);
-  pintarOlho();
+  trocarComDesfoque(document.body, () => {
+    document.body.classList.toggle("ocultar", o);
+    gravarLocal(CHAVE_OCULTAR, o);
+    pintarOlho();
+  });
 }
 
 function torrada(msg, { desfazer } = {}){
@@ -1316,7 +1326,7 @@ document.addEventListener("click", ev => {
     case "ir": ui.aba = abaValida(alvo.dataset.aba); fecharModal(); render(); window.scrollTo({ top:0, behavior:"smooth" }); break;
     case "lancar":        abrirLancar(); break;
     case "fechar-lancar": fecharLancar(); break;
-    case "detalhe":       abrirDetalhe(alvo.dataset.tipo, alvo.dataset.chave); break;
+    case "detalhe":       abrirDetalhe(alvo.dataset.tipo, alvo.dataset.chave, alvo.querySelector(".ic-cat")); break;
     case "todas-cats":    abrirTodasCats(); break;
     case "filtro":        ui.filtro = alvo.dataset.f; render(); break;
     case "olho":          alternarOcultar(); break;
@@ -1501,7 +1511,7 @@ document.addEventListener("keydown", ev => {
 
 /* =============================== INÍCIO ================================= */
 /* ============================ LANÇAR RÁPIDO ============================= */
-let rascunho = null, rapidoCat = null, rapidoTipo = null;
+let rascunho = null, rapidoCat = null, rapidoTipo = null, salvandoRapido = false;
 
 function lerRapido(){
   const t = $("#rapido-txt").value;
@@ -1541,6 +1551,7 @@ function limparRapido(){
 }
 
 function salvarRapido(){
+  if (salvandoRapido) return;
   lerRapido();
   const r = rascunho;
   if (!r) return torrada("Faltou o valor. Ex.: uber 15");
@@ -1563,10 +1574,14 @@ function salvarRapido(){
   limparRapido();
   ultimoNovo = novo.id;
   mudou();
-  fecharLancar();
-  torrada(esc(maiuscula(r.descricao)) + " · " + brl(r.valor) + " lançado", { desfazer: () => {
-    if (apagarLancamento(estado, novo.id, Date.now())){ mudou(); torrada("Desfeito."); }
-  }});
+  salvandoRapido = true;
+  botaoCheck($("#rapido-ok")).then(() => {
+    salvandoRapido = false;
+    fecharLancar();
+    torrada(esc(maiuscula(r.descricao)) + " · " + brl(r.valor) + " lançado", { desfazer: () => {
+      if (apagarLancamento(estado, novo.id, Date.now())){ mudou(); torrada("Desfeito."); }
+    }});
+  });
 }
 
 function ligarRapido(){
@@ -1688,6 +1703,8 @@ function iniciar(){
   document.body.classList.toggle("ocultar", lerLocal(CHAVE_OCULTAR) === true);
   pintarOlho();
   montarBarra();
+  ligarArrastarLinhas($("#conteudo"));
+  arrastarParaFechar($("#lancar .folha"), fecharLancar);
   render();
   pintarEstado();
   ligarRapido();

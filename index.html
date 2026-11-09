@@ -782,6 +782,18 @@ body.ocultar .din{color:transparent!important;position:relative;white-space:nowr
 body.ocultar .din::after{content:"R$ •••";position:absolute;left:0;top:0;color:var(--tinta-2)}
 body.ocultar .heroi-val.din::after,body.ocultar .det-total.din::after{color:var(--tinta)}
 body.ocultar .sem:focus::before{content:"R$ •••"}
+/* ======================= SOBROU: movimento ======================= */
+#rapido-ok{transition:min-width .35s var(--mola-forte),width .35s var(--mola-forte),background .2s}
+#rapido-ok.carregando{color:transparent;position:relative}
+#rapido-ok.carregando::after{content:"";position:absolute;inset:0;margin:auto;width:18px;height:18px;border-radius:50%;border:2px solid color-mix(in srgb,var(--sobre-marca) 30%,transparent);border-top-color:var(--sobre-marca);animation:gira .6s linear infinite}
+#rapido-ok.ok{min-width:44px;width:44px;padding:0;display:grid;place-items:center;background:var(--bom);border-color:var(--bom);color:var(--sobre-marca)}
+@keyframes gira{to{transform:rotate(360deg)}}
+.folha-detalhe .sem i{animation:cresce .45s var(--mola-forte) both;animation-delay:calc(var(--k,0) * 60ms + 120ms)}
+.lin.nova{animation:entra-lin .45s var(--mola-forte) both}
+@keyframes entra-lin{from{opacity:0;transform:translateY(-10px)}}
+.din{transition:filter .16s ease}
+body.desfocando .din{filter:blur(6px)}
+::view-transition-group(ic-detalhe){animation-duration:.4s;animation-timing-function:var(--mola-forte)}
 .oculto{display:none!important}
 </style>
 </head>
