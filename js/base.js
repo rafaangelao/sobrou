@@ -45,3 +45,14 @@ export function somarDias(iso, n){
 }
 
 export const hojeLocal = (d = new Date()) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+
+/* reduz "COMPRA CARTAO IFOOD *IFOOD 4829" a "ifood" — chave do lugar e do aprendizado */
+export function chaveComerciante(desc){
+  let n = normalizar(desc)
+    .replace(/\b(compra|no|na|nos|debito|credito|cartao|cart|pix|enviado|recebido|para|de|do|da|pagamento|pag|parcela|em|cp|tarifa|transferencia|ted|doc|final|elo|visa|master|mastercard|pagto|com)\b/g, " ")
+    .replace(/\d+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const toks = [...new Set(n.split(" ").filter(t => t.length > 2))];
+  return toks.slice(0, 3).join(" ");
+}

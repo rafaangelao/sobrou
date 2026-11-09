@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizar, somarMeses, mesesEntre, somarDias, hojeLocal, diasNoMes, mesDe } from "../js/base.js";
+import { normalizar, somarMeses, mesesEntre, somarDias, hojeLocal, diasNoMes, mesDe, chaveComerciante } from "../js/base.js";
 
 test("normalizar tira acento, pontuação e caixa", () => {
   assert.equal(normalizar("  Farmácia São-João!! "), "farmacia sao joao");
@@ -26,4 +26,12 @@ test("diasNoMes e mesDe", () => {
   assert.equal(diasNoMes(2028, 2), 29);
   assert.equal(diasNoMes(2027, 2), 28);
   assert.equal(mesDe("2026-11-05"), "2026-11");
+});
+
+test("chaveComerciante reduz a descrição ao nome do lugar", () => {
+  assert.equal(chaveComerciante("COMPRA CARTAO IFOOD *IFOOD 4829"), "ifood");
+  assert.equal(chaveComerciante("iFood"), "ifood");
+  assert.equal(chaveComerciante("pix enviado joao"), "joao");
+  assert.equal(chaveComerciante("Gasto"), "gasto");
+  assert.equal(chaveComerciante("123"), "");
 });

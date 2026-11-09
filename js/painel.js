@@ -1,4 +1,5 @@
-import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses } from "./base.js";
+import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses, chaveComerciante } from "./base.js";
+import { MESES, DIAS_SEM, brl, brlCurto, pct, pctTxt, esc, rotuloMes, rotuloData, abrevMes, maiuscula } from "./formato.js";
 import { estadoVazio, migrarV2, juntar } from "./juntar.js";
 import { lerLinha } from "./rapido.js";
 import * as nuvem from "./nuvem.js";
@@ -12,8 +13,6 @@ import { ATE_PADRAO, ultimoMes, parcelaNoMes, ocorrencias, resumoDoMes, mesesDaF
    Estado -> localStorage (imediato) + Supabase (nuvem)
    ========================================================================== */
 
-const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
-const DIAS_SEM = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
 
 /* Não sugerimos cortar estas: dízimo é decisão pessoal, poupança não é gasto. */
 const NAO_CORTAR = ["Igreja","Guardar dinheiro"];
@@ -22,21 +21,9 @@ const NAO_CORTAR = ["Igreja","Guardar dinheiro"];
 /* ------------------------------ utilidades ------------------------------ */
 const $  = (s, r=document) => r.querySelector(s);
 const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
-const moeda = new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" });
-const brl = v => moeda.format(Number(v) || 0);
-const brlCurto = v => {
-  const n = Number(v) || 0;
-  return n >= 1000 ? "R$ " + (n/1000).toFixed(1).replace(".",",") + "k" : brl(n);
-};
-const pct = (a,b) => (!b ? 0 : (a/b)*100);
-const pctTxt = n => (n < 10 ? n.toFixed(1).replace(".",",") : Math.round(n)) + "%";
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 const hoje = () => hojeLocal();
 const partes = d => d.split("-").map(Number);
 const diaSemana = d => { const [a,m,dd] = partes(d); return new Date(a, m-1, dd).getDay(); };
-const rotuloMes = p => { const [a,m] = p.split("-"); return MESES[+m-1] + " de " + a; };
-const rotuloData = d => { const [a,m,dd] = partes(d); return String(dd).padStart(2,"0") + " de " + MESES[m-1]; };
-const abrevMes = p => MESES[+p.slice(5) - 1].slice(0, 3) + "/" + p.slice(0, 4);
 const ICONE_EDITAR = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 const ICONE_APAGAR = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>`;
 const corDe = nome => (CATS_BASE.find(c => c.nome === nome) || { cor:"var(--c0)" }).cor;
@@ -173,17 +160,6 @@ const IGNORAR = ["pagamento de fatura","pagamento fatura","fatura cartao","trans
 const bate = (n, p) => p.length <= 4
   ? new RegExp("(^|[^a-z0-9])" + p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^a-z0-9]|$)").test(n)
   : n.includes(p);
-
-/* reduz "COMPRA CARTAO IFOOD *IFOOD 4829" a "ifood" — é a chave do aprendizado */
-function chaveComerciante(desc){
-  let n = normalizar(desc)
-    .replace(/\b(compra|no|na|nos|debito|credito|cartao|cart|pix|enviado|recebido|para|de|do|da|pagamento|pag|parcela|em|cp|tarifa|transferencia|ted|doc|final|elo|visa|master|mastercard|pagto|com)\b/g, " ")
-    .replace(/\d+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const toks = [...new Set(n.split(" ").filter(t => t.length > 2))];
-  return toks.slice(0, 3).join(" ");
-}
 
 function classificar(desc){
   const n = normalizar(desc);
