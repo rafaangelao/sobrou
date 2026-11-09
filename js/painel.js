@@ -1,7 +1,11 @@
 import { normalizar, RE_ENTRADA, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses, chaveComerciante } from "./base.js";
 import { MESES, DIAS_SEM, brl, brlCurto, pct, pctTxt, esc, rotuloMes, rotuloData, abrevMes, maiuscula } from "./formato.js";
 import { estadoVazio, migrarV2, juntar, apagarLancamento } from "./juntar.js";
-import { corDe } from "./icones.js";
+import { corDe, iconeUI, iconeCat } from "./icones.js";
+import { BARRA, abaValida, posicaoNaBarra } from "./navegacao.js";
+import { telaInicio, folhaDetalhe } from "./telas/inicio.js";
+import { telaExtrato, listaExtrato, filtrarExtrato } from "./telas/extrato.js";
+import { telaMais, telaConta, voltarMais } from "./telas/mais.js";
 import { porCategoria, NAO_CORTAR } from "./raiox.js";
 import { lerLinha } from "./rapido.js";
 import * as nuvem from "./nuvem.js";
@@ -32,7 +36,8 @@ const CHAVE_DADOS = "painel-dinheiro:dados";
 const CHAVE_UI    = "painel-dinheiro:ui";
 
 let estado = null;
-let ui = { aba:"visao", periodo:null, tipoForm:"gasto", cortes:{}, lote:null };
+let ui = { aba:"inicio", periodo:null, tipoForm:"gasto", cortes:{}, lote:null, busca:"", filtro:"tudo" };
+let ultimoNovo = "";
 let sujo = false, publicando = false, falhou = false, timerSync = 0, mudancas = 0;
 let usuario = null;
 let ultimoToqueFixa = 0;   /* "Paguei" e "Desfazer" trocam de lugar: um toque duplo não pode pagar e desfazer */
@@ -84,14 +89,19 @@ async function sincronizar(){
   }
 }
 
+function estadoAtual(){
+  if (!usuario) return ["offline", navigator.onLine ? "Entrar pra salvar na nuvem" : "Sem conexão — salvo neste aparelho", ""];
+  if (publicando) return ["salvando", "Salvando…", ""];
+  if (!navigator.onLine || falhou) return ["offline", "Sem conexão — salvo neste aparelho", "Tento de novo quando a internet voltar."];
+  if (sujo) return ["sujo", "Salvar agora", "Há mudanças ainda não enviadas."];
+  return ["ok", "Tudo salvo", ""];
+}
+const textoEstado = () => estadoAtual()[1];
 function pintarEstado(){
-  const el = $("#estado"), txt = el.querySelector("span");
-  const por = (s, t, dica = "") => { el.dataset.s = s; txt.textContent = t; el.title = dica; };
-  if (!usuario) return por("offline", navigator.onLine ? "Entrar pra salvar na nuvem" : "Sem conexão — salvo neste aparelho");
-  if (publicando) return por("salvando", "Salvando…");
-  if (!navigator.onLine || falhou) return por("offline", "Sem conexão — salvo neste aparelho", "Tento de novo quando a internet voltar.");
-  if (sujo) return por("sujo", "Salvar agora", "Há mudanças ainda não enviadas.");
-  por("ok", "Tudo salvo");
+  const [s, t, dica] = estadoAtual();
+  const el = $("#estado");
+  el.dataset.s = s; el.querySelector("span").textContent = t; el.title = dica || t;
+  const ec = $("#conta-estado"); if (ec) ec.textContent = t;
 }
 
 /* ------------------------------ seleção --------------------------------- */
@@ -311,139 +321,6 @@ function montarLote(brutos){
 }
 
 /* ============================ ABA: VISÃO GERAL =========================== */
-function avisoFixas(){
-  if (!estado.fixas.length) return "";
-  const hj = hoje(), limite = somarDias(hj, 5);
-  const atual = mesDe(hj);
-  const ocs = [
-    ...ocorrencias(estado.fixas, estado.lancamentos, atual, hj),
-    ...ocorrencias(estado.fixas, estado.lancamentos, somarMeses(atual, 1), hj),
-  ];
-  const vencendo = ocs.filter(o => o.situacao === "a-pagar" && o.vencimento <= limite);
-  const atrasadas = [...pendentesAnteriores(estado.fixas, estado.lancamentos, hj), ...ocs.filter(o => o.situacao === "atrasado")];
-  if (!vencendo.length && !atrasadas.length) return "";
-  const partes = [];
-  if (atrasadas.length) partes.push(`${atrasadas.length} atrasada${atrasadas.length === 1 ? "" : "s"} (${brl(somar(atrasadas))})`);
-  if (vencendo.length) partes.push(`${vencendo.length} conta${vencendo.length === 1 ? " vence" : "s vencem"} nos próximos 5 dias (${brl(somar(vencendo))})`);
-  return `<div class="aviso" data-t="${atrasadas.length ? "grave" : ""}" role="status">
-    <span>${partes.join(" · ")}</span>
-    <button class="btn btn-txt" type="button" data-acao="ir" data-aba="fixas" style="margin-left:auto">Ver fixas</button>
-  </div>`;
-}
-
-function abaVisao(){
-  const itens = doPeriodo();
-  const gastos = gastosDe(itens), entradas = entradasDe(itens);
-  const tg = somar(gastos), te = somar(entradas);
-  const guardado = somar(gastos.filter(g => g.categoria === "Guardar dinheiro"));
-  const saldo = te - tg;
-  const cats = porCategoria(gastos);
-  const aviso = avisoFixas();
-  const prev = ui.periodo !== "tudo" && estado.fixas.length
-    ? resumoDoMes(ocorrencias(estado.fixas, estado.lancamentos, ui.periodo, hoje())) : null;
-
-  if (!itens.length) return aviso + vazio(
-    "Nada lançado " + (ui.periodo === "tudo" ? "ainda" : "em " + rotuloMes(ui.periodo)),
-    "Toque no botão + e registre o primeiro gasto ou recebimento deste período. O painel calcula o resto sozinho."
-  );
-
-  const kpis = `
-    <section class="kpis">
-      <div class="kpi" style="--faixa:var(--bom)" data-t="bom">
-        <div class="rot">Entrou</div><div class="val">${brl(te)}</div>
-        <div class="pe">${entradas.length} recebimento${entradas.length===1?"":"s"}</div>
-      </div>
-      <div class="kpi" style="--faixa:var(--c2)">
-        <div class="rot">Saiu</div><div class="val">${brl(tg)}</div>
-        <div class="pe">${gastos.length} gasto${gastos.length===1?"":"s"}${te?" · "+pctTxt(pct(tg,te))+" do que entrou":""}</div>
-      </div>
-      <div class="kpi" data-heroi style="--faixa:${saldo>=0?"var(--marca)":"var(--grave)"}" data-t="${saldo>=0?"":"grave"}">
-        <div class="rot">${saldo>=0?"Sobrou":"Faltou"}</div><div class="val">${brl(Math.abs(saldo))}</div>
-        <div class="pe">${te ? pctTxt(pct(Math.abs(saldo),te)) + " do que entrou" : "sem entradas no período"}</div>
-      </div>
-      <div class="kpi" style="--faixa:var(--c9)">
-        <div class="rot">Guardado</div><div class="val">${brl(guardado)}</div>
-        <div class="pe">${guardado ? "bom trabalho" : "nada separado ainda"}</div>
-      </div>
-      ${prev && prev.aPagar ? `
-      <div class="kpi" style="--faixa:var(--alerta)">
-        <div class="rot">A pagar</div><div class="val">${brl(prev.aPagar)}</div>
-        <div class="pe">fixas e parcelas do mês${prev.atrasado ? " · " + brl(prev.atrasado) + " atrasado" : ""}</div>
-      </div>` : ""}
-    </section>`;
-
-  /* ---- barras por categoria ---- */
-  const maior = cats[0]?.total || 1;
-  const linhasCat = cats.map(c => `
-    <div>
-      <div class="cat-topo">
-        <span class="cat-nome"><i class="pastilha" style="--c:${c.cor}"></i><span>${esc(c.nome)}</span></span>
-        <span class="cat-val">${brl(c.total)}<em>${pctTxt(pct(c.total,tg))}</em></span>
-      </div>
-      <div class="trilho"><div class="barra" style="--w:${pct(c.total,maior).toFixed(1)}%;--c:${c.cor}"></div></div>
-    </div>`).join("");
-
-  const painelCats = `
-    <section class="cartao">
-      <h2>Pra onde foi o dinheiro <small>${cats.length} categoria${cats.length===1?"":"s"} · maior barra = maior gasto</small></h2>
-      <div class="cats">${linhasCat || '<p class="sub">Nenhum gasto neste período.</p>'}</div>
-      ${tabelaCats(cats, tg, te)}
-    </section>`;
-
-  /* ---- ritmo (dias ou meses) ---- */
-  let ritmo = "";
-  if (ui.periodo === "tudo"){
-    const porMes = new Map();
-    for (const g of gastos) porMes.set(mesDe(g.data), (porMes.get(mesDe(g.data))||0) + g.valor);
-    const chaves = [...porMes.keys()].sort();
-    const topo = Math.max(...porMes.values(), 1);
-    ritmo = blocoColunas(
-      "Gasto mês a mês", chaves.length + " meses com lançamento",
-      chaves.map(k => ({ h:pct(porMes.get(k),topo), rot:MESES[+k.slice(5)-1].slice(0,3), dica:rotuloMes(k)+": "+brl(porMes.get(k)) })),
-      Math.max(1, Math.ceil(chaves.length/8))
-    );
-  } else {
-    const [ano, mes] = ui.periodo.split("-").map(Number);
-    const nd = diasNoMes(ano, mes);
-    const porDia = new Array(nd + 1).fill(0);
-    for (const g of gastos) porDia[partes(g.data)[2]] += g.valor;
-    const topo = Math.max(...porDia, 1);
-    const hj = hoje();
-    const barras = [];
-    for (let d = 1; d <= nd; d++){
-      const iso = ui.periodo + "-" + String(d).padStart(2,"0");
-      barras.push({ h:pct(porDia[d],topo), rot:String(d), dica:rotuloData(iso)+": "+(porDia[d]?brl(porDia[d]):"nada gasto"), hoje: iso === hj });
-    }
-    const comGasto = porDia.filter(v => v > 0).length;
-    const sub = !comGasto ? "nenhum gasto lançado neste mês"
-      : comGasto === 1 ? "1 dia com gasto no mês inteiro"
-      : comGasto + " dias com gasto · média de " + brl(tg/comGasto) + " nos dias em que você gastou";
-    ritmo = blocoColunas("Dia a dia do mês", sub, barras, nd > 20 ? 5 : 2);
-  }
-
-  return aviso + kpis + `<div class="grade grade-2">${painelCats}${ritmo}</div>` + blocoUltimos(itens);
-}
-
-function tabelaCats(cats, tg, te){
-  if (!cats.length) return "";
-  return `
-    <details style="margin-top:16px">
-      <summary style="cursor:pointer;font-size:12.5px;color:var(--tinta-3);font-weight:600">Ver como tabela</summary>
-      <div class="rolar">
-        <table>
-          <thead><tr><th>Categoria</th><th class="n">Gasto</th><th class="n">% do gasto</th><th class="n">% da renda</th></tr></thead>
-          <tbody>${cats.map(c => `<tr>
-            <td><i class="pastilha" style="--c:${c.cor};display:inline-block;vertical-align:middle;margin-right:7px"></i>${esc(c.nome)}</td>
-            <td class="n">${brl(c.total)}</td>
-            <td class="n">${pctTxt(pct(c.total,tg))}</td>
-            <td class="n">${te ? pctTxt(pct(c.total,te)) : "—"}</td>
-          </tr>`).join("")}</tbody>
-          <tfoot><tr><td>Total</td><td class="n">${brl(tg)}</td><td class="n">100%</td><td class="n">${te?pctTxt(pct(tg,te)):"—"}</td></tr></tfoot>
-        </table>
-      </div>
-    </details>`;
-}
-
 function blocoColunas(titulo, sub, barras, passo){
   return `
     <section class="cartao">
@@ -456,69 +333,6 @@ function blocoColunas(titulo, sub, barras, passo){
       </div>
     </section>`;
 }
-
-function blocoUltimos(itens){
-  const ult = itens.slice().sort((a,b) => b.data.localeCompare(a.data)).slice(0,6);
-  if (!ult.length) return "";
-  return `
-    <section class="cartao">
-      <h2>Últimos lançamentos <small>do período selecionado</small></h2>
-      <div class="lista">${ult.map(itemHTML).join("")}</div>
-      <div style="margin-top:14px"><button class="btn" type="button" data-acao="ir" data-aba="lancamentos">Ver todos os lançamentos</button></div>
-    </section>`;
-}
-
-/* ============================ ABA: LANÇAMENTOS =========================== */
-function abaLancamentos(){
-  const itens = doPeriodo().slice().sort((a,b) => b.data.localeCompare(a.data) || b.id.localeCompare(a.id));
-  if (!itens.length) return vazio("Nenhum lançamento aqui", "Escolha outro período no topo ou toque no + para registrar algo novo.");
-
-  const grupos = new Map();
-  for (const l of itens){
-    if (!grupos.has(l.data)) grupos.set(l.data, []);
-    grupos.get(l.data).push(l);
-  }
-  const blocos = [...grupos].map(([data, ls]) => {
-    const g = somar(gastosDe(ls)), e = somar(entradasDe(ls));
-    const resumo = [g ? "−" + brl(g) : "", e ? "+" + brl(e) : ""].filter(Boolean).join("  ");
-    return `<div class="dia-rot"><span>${rotuloData(data)}</span><span style="text-transform:none;letter-spacing:0;font-weight:500">${DIAS_SEM[diaSemana(data)]}</span><b>${resumo}</b></div>
-            ${ls.map(itemHTML).join("")}`;
-  }).join("");
-
-  return `
-    <section class="cartao">
-      <h2>Todos os lançamentos <small>${itens.length} registro${itens.length===1?"":"s"} · ${ui.periodo==="tudo"?"todos os meses":rotuloMes(ui.periodo)}</small></h2>
-      <div class="lista">${blocos}</div>
-      <div class="brisa" style="margin-top:20px">
-        <button class="btn btn-forte" type="button" data-acao="novo">+ Novo lançamento</button>
-        <button class="btn" type="button" data-acao="csv" id="btn-csv">Baixar planilha (CSV)</button>
-      </div>
-    </section>`;
-}
-
-function itemHTML(l){
-  const mais = l.tipo === "entrada";
-  return `
-    <div class="item">
-      <i class="pastilha" style="--c:${mais ? "var(--bom)" : corDe(l.categoria)}"></i>
-      <div class="item-txt">
-        <b>${esc(l.descricao || (mais ? "Entrada" : "Gasto"))}</b>
-        <small>${mais ? "Entrada" : esc(l.categoria || "Outros")} · ${rotuloData(l.data)}</small>
-      </div>
-      <span class="valor ${mais ? "mais" : ""}">${mais ? "+" : "−"}${brl(l.valor)}</span>
-      <span class="acoes">
-        <button class="icone" type="button" data-acao="editar" data-id="${l.id}" aria-label="Editar ${esc(l.descricao)}">
-          ${ICONE_EDITAR}
-        </button>
-        <button class="icone perigo" type="button" data-acao="apagar" data-id="${l.id}" aria-label="Apagar ${esc(l.descricao)}">
-          ${ICONE_APAGAR}
-        </button>
-      </span>
-    </div>`;
-}
-
-/* ========================= ABA: FIXAS E PARCELAS ========================= */
-const ROT_SIT = { "pago": "pago", "a-pagar": "a pagar", "atrasado": "atrasado" };
 
 function abaFixas(){
   const hj = hoje();
@@ -1043,24 +857,69 @@ function vazio(t, p){
 }
 
 /* =============================== RENDER ================================= */
-const ABAS = [
-  { id:"visao",       rot:"Visão geral",  curto:"Início",   fn:abaVisao },
-  { id:"lancamentos", rot:"Lançamentos",  curto:"Lançados", fn:abaLancamentos },
-  { id:"fixas",       rot:"Fixas e parcelas", curto:"Fixas", fn:abaFixas },
-  { id:"importar",    rot:"Importar",     curto:"Importar", fn:abaImportar },
-  { id:"economizar",  rot:"Economizar",   curto:"Economia", fn:abaEconomizar },
-  { id:"metas",       rot:"Metas",        curto:"Metas",    fn:abaMetas },
-];
-/* ícones da barra de abas do celular */
-const ICONE_ABA = {
-  visao:       '<path d="M4 11.2 12 4l8 7.2V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
-  lancamentos: '<path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle cx="4.6" cy="6.5" r="1"/><circle cx="4.6" cy="12" r="1"/><circle cx="4.6" cy="17.5" r="1"/>',
-  fixas:       '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/>',
-  importar:    '<path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5M4.5 16.5v2a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-2"/>',
-  economizar:  '<path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.8 10.6c.8.7 1.3 1.6 1.3 2.6v.3h5v-.3c0-1 .5-1.9 1.3-2.6A6 6 0 0 0 12 3z"/>',
-  metas:       '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>',
+const TITULOS = { inicio:"Olá", extrato:"Extrato", fixas:"Fixas", mais:"Mais", economizar:"Economizar", metas:"Metas", importar:"Importar extrato", conta:"Conta e nuvem" };
+const SEM_PERIODO = ["mais", "conta", "importar"];
+const ROT_BARRA = { inicio:"Início", extrato:"Extrato", fixas:"Fixas", mais:"Mais" };
+
+function fixasAPagar(){
+  if (ui.periodo === "tudo" || !estado.fixas.length) return null;
+  const hj = hoje();
+  const anteriores = ui.periodo === mesDe(hj) ? pendentesAnteriores(estado.fixas, estado.lancamentos, hj) : [];
+  const ocs = [...anteriores, ...ocorrencias(estado.fixas, estado.lancamentos, ui.periodo, hj).filter(o => o.situacao !== "pago")];
+  if (!ocs.length) return null;
+  return { qtd: ocs.length, valor: Math.round(somar(ocs) * 100) / 100,
+           atrasado: anteriores.length > 0 || ocs.some(o => o.situacao === "atrasado"),
+           ateDia: Math.max(...ocs.map(o => +o.vencimento.slice(8))) };
+}
+
+const TELAS = {
+  inicio:     () => telaInicio({ lancamentos: estado.lancamentos, periodo: ui.periodo, hoje: hoje(), fixas: fixasAPagar() }),
+  extrato:    () => telaExtrato({ itens: doPeriodo(), hoje: hoje(), busca: ui.busca, filtro: ui.filtro,
+                                  rotuloPeriodo: ui.periodo === "tudo" ? "ainda" : "em " + MESES[+ui.periodo.slice(5) - 1] }),
+  fixas:      () => abaFixas(),
+  mais:       () => telaMais(),
+  economizar: () => voltarMais() + abaEconomizar(),
+  metas:      () => voltarMais() + abaMetas(),
+  importar:   () => voltarMais() + abaImportar(),
+  conta:      () => voltarMais() + telaConta({ email: usuario?.email || "", estado: textoEstado() }),
 };
-const svgAba = id => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONE_ABA[id] || ""}</svg>`;
+
+/* a barra é montada uma vez só: assim o destaque desliza em vez de piscar */
+function montarBarra(){
+  $("#barra").innerHTML = `<span class="barra-ind" aria-hidden="true"></span><span class="barra-marca">Sobrou</span>` +
+    BARRA.map(id => id === "+"
+      ? `<button type="button" class="barra-mais" data-acao="lancar" aria-label="Lançar">${iconeUI("somar", 26)}<span>Lançar</span></button>`
+      : `<button type="button" class="barra-it" data-acao="ir" data-aba="${id}">${iconeUI(id, 22)}<span>${ROT_BARRA[id]}</span></button>`).join("");
+}
+function pintarBarra(){
+  const i = posicaoNaBarra(ui.aba);
+  $("#barra").style.setProperty("--i", i);
+  document.querySelectorAll("#barra .barra-it").forEach(b => {
+    if (BARRA.indexOf(b.dataset.aba) === i) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+  });
+}
+
+/* embrulha todo "R$ 12,34" solto num .din para o modo "esconder valores" */
+const RE_RS = /[−+-]?R\$\s?(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\dk)/g;
+function marcarValores(raiz){
+  const andar = document.createTreeWalker(raiz, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => !n.parentElement || n.parentElement.closest(".din, script, style, option, textarea") || !n.nodeValue.includes("R$")
+      ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+  const nos = [];
+  while (andar.nextNode()) nos.push(andar.currentNode);
+  for (const n of nos){
+    const t = n.nodeValue, f = document.createDocumentFragment();
+    let i = 0;
+    for (const m of t.matchAll(RE_RS)){
+      f.append(t.slice(i, m.index));
+      const s = document.createElement("span"); s.className = "din"; s.textContent = m[0]; f.append(s);
+      i = m.index + m[0].length;
+    }
+    if (!i) continue;
+    f.append(t.slice(i));
+    n.replaceWith(f);
+  }
+}
 
 function render(){
   const periodos = periodosDisponiveis();
@@ -1074,29 +933,17 @@ function render(){
     }).join("") +
     `<option value="tudo"${ui.periodo==="tudo"?" selected":""}>Todos os meses · ${estado.lancamentos.length}</option>`;
 
-  const n = doPeriodo().length;
-  $("#rot-periodo").textContent = ui.periodo === "tudo"
-    ? estado.lancamentos.length + " lançamentos no total"
-    : n + " lançamento" + (n===1?"":"s") + " neste mês";
-
-  $("#abas").innerHTML = ABAS.map(a => {
-    const c = a.id === "lancamentos" ? `<span class="cont">${doPeriodo().length}</span>` : "";
-    return `<button role="tab" type="button" aria-selected="${a.id===ui.aba}" aria-label="${a.rot}" data-acao="ir" data-aba="${a.id}">${svgAba(a.id)}<span class="rot-l">${a.rot}</span><span class="rot-c">${a.curto}</span>${c}</button>`;
-  }).join("");
-
-  $("#conteudo").innerHTML = (ABAS.find(a => a.id === ui.aba) || ABAS[0]).fn();
-  /* na revisão do extrato o + atrapalha: ele cobriria o botão Importar */
-  document.querySelector(".fab").classList.toggle("oculto", ui.aba === "importar");
+  $("#titulo").textContent = TITULOS[ui.aba];
+  $(".periodo").classList.toggle("oculto", SEM_PERIODO.includes(ui.aba));
+  pintarBarra();
+  $("#conteudo").innerHTML = TELAS[ui.aba]();
+  marcarValores($("#conteudo"));
   animarEntrada();
   if (ui.aba === "importar"){ ligarSolta(); atualizarBarraImport(); }
   gravarLocal(CHAVE_UI, { aba: ui.aba, periodo: ui.periodo });
 }
 
 /* ============================== MOVIMENTO ============================== */
-function pulsarRapido(){
-  const f = $("#rapido"); if (!f) return;
-  f.classList.remove("salvo"); void f.offsetWidth; f.classList.add("salvo");
-}
 /* só enfeite: entrada escalonada ao trocar de aba/mês, números que contam, selo do Paguei */
 const semMovimento = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 let ultimaVista = "", carimbar = "";
@@ -1106,13 +953,13 @@ function lerBrl(t){
   return isFinite(n) ? n : 0;
 }
 function contarValores(novaVista){
-  document.querySelectorAll("#conteudo .kpi .val").forEach(el => {
-    const chave = el.previousElementSibling?.textContent || "";
+  document.querySelectorAll("#conteudo [data-conta]").forEach(el => {
+    const chave = el.dataset.conta;
     const final = el.textContent, alvo = lerBrl(final);
     const de = novaVista ? 0 : (valoresAntes.get(chave) ?? alvo);
     valoresAntes.set(chave, alvo);
     if (semMovimento() || de === alvo) return;
-    const t0 = performance.now(), dur = 800;
+    const t0 = performance.now(), dur = 700;
     const passo = agora => {
       if (!el.isConnected) return;
       const p = Math.min(1, (agora - t0) / dur), e = 1 - Math.pow(1 - p, 3);
@@ -1128,7 +975,7 @@ function animarEntrada(){
   const vista = ui.aba + "|" + ui.periodo, nova = vista !== ultimaVista;
   ultimaVista = vista;
   if (nova && !semMovimento()){
-    for (const g of [".kpis > *", ".lista > *", ".meses > *", ".insights > *", ".cats > *", ":scope > *"])
+    for (const g of [".kpis > *", ".lista > *", ".meses > *", ".insights > *", ".cats > *", ".linhas > *", ".menu > *", "#extrato-lista > *", ":scope > *"])
       c.querySelectorAll(g).forEach((el, i) => el.style.setProperty("--i", Math.min(i, 12)));
     c.querySelectorAll(".colunas .col").forEach((el, i) => el.style.setProperty("--k", i));
     c.classList.remove("anima"); void c.offsetWidth; c.classList.add("anima");
@@ -1400,12 +1247,51 @@ async function baixarCSV(){
 }
 
 /* ============================== EVENTOS ================================= */
-function torrada(msg){
+function abrirFolha(html){
+  $("#modal").innerHTML = `<div class="veu" data-acao="fechar">${html}</div>`;
+  marcarValores($("#modal"));
+}
+function abrirDetalhe(tipo, chave){
+  const html = folhaDetalhe({ lancamentos: estado.lancamentos, periodo: ui.periodo, hoje: hoje(), tipo, chave });
+  if (html) abrirFolha(html);
+}
+function abrirTodasCats(){
+  const gastos = gastosDe(doPeriodo()), tg = somar(gastos);
+  abrirFolha(`<div class="folha" role="dialog" aria-modal="true" aria-labelledby="cats-tit"><div class="alca" aria-hidden="true"></div>
+    <div class="det-topo" data-puxa><h2 id="cats-tit">Todas as categorias</h2><button type="button" class="icone" data-acao="fechar" aria-label="Fechar">${iconeUI("fechar", 20)}</button></div>
+    <div class="linhas">${porCategoria(gastos).map(c => `<button type="button" class="linha" data-acao="detalhe" data-tipo="cat" data-chave="${esc(c.nome)}">${iconeCat(c.nome)}
+      <span class="linha-txt"><b>${esc(c.nome)}</b><small>${pctTxt(pct(c.total, tg))} do que saiu</small></span><span class="linha-val"><b>${brl(c.total)}</b></span></button>`).join("")}</div></div>`);
+}
+/* foco no mesmo toque: o iPhone só abre o teclado assim */
+function abrirLancar(){
+  $("#lancar .folha").style.transform = "";
+  $("#lancar").classList.remove("oculto");
+  $("#rapido-txt").focus();
+}
+function fecharLancar(){ $("#rapido-txt").blur(); $("#lancar").classList.add("oculto"); }
+
+const CHAVE_OCULTAR = "sobrou:ocultar";
+function pintarOlho(){
+  const o = document.body.classList.contains("ocultar"), b = $("#btn-olho");
+  b.innerHTML = iconeUI(o ? "olho-fechado" : "olho", 22);
+  b.setAttribute("aria-pressed", String(o));
+  b.setAttribute("aria-label", o ? "Mostrar valores" : "Esconder valores");
+}
+function alternarOcultar(){
+  const o = !document.body.classList.contains("ocultar");
+  document.body.classList.toggle("ocultar", o);
+  gravarLocal(CHAVE_OCULTAR, o);
+  pintarOlho();
+}
+
+function torrada(msg, { desfazer } = {}){
   const t = $("#torrada");
-  t.innerHTML = msg;
+  t.innerHTML = `<span>${msg}</span>` + (desfazer ? `<button type="button" class="torrada-desf">Desfazer</button>` : "");
+  marcarValores(t);
+  if (desfazer) t.querySelector(".torrada-desf").addEventListener("click", () => { t.classList.remove("vem"); desfazer(); }, { once: true });
   t.classList.add("vem");
   clearTimeout(t._t);
-  t._t = setTimeout(() => t.classList.remove("vem"), 3400);
+  t._t = setTimeout(() => t.classList.remove("vem"), desfazer ? 5000 : 3400);
 }
 
 document.addEventListener("click", ev => {
@@ -1413,11 +1299,11 @@ document.addEventListener("click", ev => {
   if (!alvo) return;
   const a = alvo.dataset.acao;
 
-  if (a === "fechar" && ev.target !== alvo) return;   /* só o véu / o botão */
+  if ((a === "fechar" || a === "fechar-lancar") && ev.target !== alvo) return;   /* só o véu / o botão */
 
   const periodos = periodosDisponiveis();
   switch (a){
-    case "novo":     abrirForm(null); break;
+    case "novo":     fecharLancar(); abrirForm(null); break;
     case "editar":   abrirForm(alvo.dataset.id); break;
     case "apagar": {
       const l = estado.lancamentos.find(x => x.id === alvo.dataset.id);
@@ -1427,14 +1313,22 @@ document.addEventListener("click", ev => {
       });
       break;
     }
-    case "ir":       ui.aba = alvo.dataset.aba; render(); window.scrollTo({ top:0, behavior:"smooth" }); break;
+    case "ir": ui.aba = abaValida(alvo.dataset.aba); fecharModal(); render(); window.scrollTo({ top:0, behavior:"smooth" }); break;
+    case "lancar":        abrirLancar(); break;
+    case "fechar-lancar": fecharLancar(); break;
+    case "detalhe":       abrirDetalhe(alvo.dataset.tipo, alvo.dataset.chave); break;
+    case "todas-cats":    abrirTodasCats(); break;
+    case "filtro":        ui.filtro = alvo.dataset.f; render(); break;
+    case "olho":          alternarOcultar(); break;
+    case "entrar":        mostrarEntrar(); break;
+    case "sincronizar":   sincronizar(); break;
     case "fechar":   fecharModal(); break;
     case "csv":      baixarCSV(); break;
     case "sair": {
       nuvem.sair().catch(() => {});
       usuario = null;
-      $("#btn-sair").classList.add("oculto");
       pintarEstado();
+      if (ui.aba === "conta") render();
       torrada("Você saiu. Os dados continuam neste aparelho.");
       break;
     }
@@ -1522,7 +1416,7 @@ document.addEventListener("click", ev => {
       const n = escolhidos.length;
       ui.periodo = mesDe(escolhidos[escolhidos.length - 1].data);
       ui.lote = null;
-      ui.aba = "lancamentos";
+      ui.aba = "extrato";
       mudou();
       torrada(n + (n === 1 ? " lançamento importado" : " lançamentos importados") + ".");
       break;
@@ -1542,6 +1436,13 @@ $("#estado").addEventListener("click", () => { if (!usuario) mostrarEntrar(); el
 $("#sel-periodo").addEventListener("change", e => { ui.periodo = e.target.value; render(); });
 
 document.addEventListener("input", ev => {
+  if (ev.target.id === "busca-extrato"){
+    ui.busca = ev.target.value;
+    const l = $("#extrato-lista");
+    l.innerHTML = listaExtrato(filtrarExtrato(doPeriodo(), { busca: ui.busca, filtro: ui.filtro }), hoje(), ui.busca);
+    marcarValores(l);
+    return;
+  }
   const s = ev.target.closest("[data-corte]");
   if (s){
     const nome = s.dataset.corte, p = Number(s.value);
@@ -1588,9 +1489,9 @@ document.addEventListener("change", ev => {
 });
 
 document.addEventListener("keydown", ev => {
-  if (ev.key === "Escape") fecharModal();
+  if (ev.key === "Escape"){ fecharModal(); fecharLancar(); }
   if (ev.key === "/" && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && !$("#modal").children.length){
-    ev.preventDefault(); $("#rapido-txt").focus(); return;
+    ev.preventDefault(); abrirLancar(); return;
   }
   if (ev.key === "n" && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName) && !$("#modal").children.length){
     ev.preventDefault(); abrirForm(null);
@@ -1647,6 +1548,7 @@ function salvarRapido(){
     abrirFormFixa(null, { tipo: "parcelado", nome: r.descricao, valor: Math.round(r.valor / r.parcelas * 100) / 100,
                           parcelas: r.parcelas, inicio: mesDe(r.data), dia: +r.data.slice(8), categoria: r.categoria || "Outros" });
     limparRapido();
+    fecharLancar();
     return;
   }
   if (r.tipo === "gasto" && !r.categoria){ $("#rapido-cat")?.focus(); return torrada("Escolha a categoria antes de salvar."); }
@@ -1654,12 +1556,17 @@ function salvarRapido(){
     if (!estado.categorias.includes(r.categoria)) estado.categorias.push(r.categoria);
     if (rapidoCat){ const k = chaveComerciante(r.descricao); if (k){ estado.regras[k] = r.categoria; estado.regrasEm = Date.now(); } }
   }
-  estado.lancamentos.push({ id: uid(), tipo: r.tipo, data: r.data, categoria: r.tipo === "gasto" ? r.categoria : "",
-                            descricao: r.descricao, valor: r.valor, editadoEm: Date.now() });
+  const novo = { id: uid(), tipo: r.tipo, data: r.data, categoria: r.tipo === "gasto" ? r.categoria : "",
+                 descricao: r.descricao, valor: r.valor, editadoEm: Date.now() };
+  estado.lancamentos.push(novo);
   if (ui.periodo !== "tudo" && mesDe(r.data) !== ui.periodo) ui.periodo = mesDe(r.data);
   limparRapido();
-  mudou(); pulsarRapido();
-  torrada((r.tipo === "entrada" ? "Entrada de " : "Gasto de ") + brl(r.valor) + " registrado.");
+  ultimoNovo = novo.id;
+  mudou();
+  fecharLancar();
+  torrada(esc(maiuscula(r.descricao)) + " · " + brl(r.valor) + " lançado", { desfazer: () => {
+    if (apagarLancamento(estado, novo.id, Date.now())){ mudou(); torrada("Desfeito."); }
+  }});
 }
 
 function ligarRapido(){
@@ -1716,7 +1623,7 @@ function esconderEntrar(){ $("#entrar").classList.add("oculto"); }
 
 async function entrou(u){
   usuario = u;
-  $("#btn-sair").classList.remove("oculto");
+  if (ui.aba === "conta") render();
   esconderEntrar();
   pintarEstado();
   await sincronizar();
@@ -1776,8 +1683,11 @@ function ligarEntrar(){
 function iniciar(){
   carregarEstado();
   const salvo = lerLocal(CHAVE_UI) || {};
-  ui.aba = ABAS.some(a => a.id === salvo.aba) ? salvo.aba : "visao";
+  ui.aba = abaValida(salvo.aba);
   ui.periodo = salvo.periodo || periodoPadrao();
+  document.body.classList.toggle("ocultar", lerLocal(CHAVE_OCULTAR) === true);
+  pintarOlho();
+  montarBarra();
   render();
   pintarEstado();
   ligarRapido();
@@ -1803,7 +1713,7 @@ async function ligarNuvem(){
   else if (navigator.onLine) mostrarEntrar();
   pintarEstado();
   nuvem.aoMudarSessao(u => {
-    if (!u && usuario){ usuario = null; $("#btn-sair").classList.add("oculto"); pintarEstado(); mostrarEntrar(); }
+    if (!u && usuario){ usuario = null; pintarEstado(); mostrarEntrar(); }
   }).catch(() => {});
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") return;
