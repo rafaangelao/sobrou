@@ -1,6 +1,8 @@
-import { normalizar, RE_ENTRADA, CATS_BASE, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses, chaveComerciante } from "./base.js";
+import { normalizar, RE_ENTRADA, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses, chaveComerciante } from "./base.js";
 import { MESES, DIAS_SEM, brl, brlCurto, pct, pctTxt, esc, rotuloMes, rotuloData, abrevMes, maiuscula } from "./formato.js";
 import { estadoVazio, migrarV2, juntar } from "./juntar.js";
+import { corDe } from "./icones.js";
+import { porCategoria, NAO_CORTAR } from "./raiox.js";
 import { lerLinha } from "./rapido.js";
 import * as nuvem from "./nuvem.js";
 import { novoCodigo, urlDeRetorno, codigoDaUrl, pedidoValido } from "./pareamento.js";
@@ -14,8 +16,6 @@ import { ATE_PADRAO, ultimoMes, parcelaNoMes, ocorrencias, resumoDoMes, mesesDaF
    ========================================================================== */
 
 
-/* Não sugerimos cortar estas: dízimo é decisão pessoal, poupança não é gasto. */
-const NAO_CORTAR = ["Igreja","Guardar dinheiro"];
 
 
 /* ------------------------------ utilidades ------------------------------ */
@@ -26,7 +26,6 @@ const partes = d => d.split("-").map(Number);
 const diaSemana = d => { const [a,m,dd] = partes(d); return new Date(a, m-1, dd).getDay(); };
 const ICONE_EDITAR = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
 const ICONE_APAGAR = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>`;
-const corDe = nome => (CATS_BASE.find(c => c.nome === nome) || { cor:"var(--c0)" }).cor;
 
 /* ------------------------------ estado ---------------------------------- */
 const CHAVE_DADOS = "painel-dinheiro:dados";
@@ -126,14 +125,6 @@ const gastosDe   = arr => arr.filter(l => l.tipo === "gasto");
 const entradasDe = arr => arr.filter(l => l.tipo === "entrada");
 const somar      = arr => arr.reduce((t,l) => t + (Number(l.valor)||0), 0);
 
-function porCategoria(gastos){
-  const m = new Map();
-  for (const g of gastos){
-    const k = g.categoria || "Outros";
-    m.set(k, (m.get(k)||0) + (Number(g.valor)||0));
-  }
-  return [...m].map(([nome,total]) => ({ nome, total, cor:corDe(nome) })).sort((a,b) => b.total - a.total);
-}
 
 /* ========================= LEITURA DE EXTRATO ============================
    Tudo acontece aqui no navegador: o arquivo do banco não sai do seu aparelho.
