@@ -782,6 +782,21 @@ body.ocultar .din{color:transparent!important;position:relative;white-space:nowr
 body.ocultar .din::after{content:"R$ •••";position:absolute;left:0;top:0;color:var(--tinta-2)}
 body.ocultar .heroi-val.din::after,body.ocultar .det-total.din::after{color:var(--tinta)}
 body.ocultar .sem:focus::before{content:"R$ •••"}
+/* escolher o mês */
+.topo .periodo .periodo-btn{display:inline-flex;align-items:center;gap:6px;min-width:0;padding:8px 10px;border-radius:999px;font-size:14px;font-weight:600;color:var(--tinta);background:var(--superficie)}
+.periodo-btn span{white-space:nowrap}
+.periodo-btn svg{transform:rotate(90deg);color:var(--tinta-3)}
+.per-ano{font-size:13px;font-weight:600;color:var(--tinta-3);margin:16px 2px 8px}
+.per-grade{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.per-mes,.per-tudo{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;padding:11px 4px;border-radius:14px;border:1px solid var(--linha);background:var(--superficie-2);color:var(--tinta-3);font:inherit;font-size:14.5px;font-weight:600;cursor:pointer;transition:transform .2s var(--mola-forte),background .2s}
+.per-mes[data-tem]{color:var(--tinta)}
+.per-mes small,.per-tudo small{font-size:11px;font-weight:500;color:var(--tinta-3)}
+.per-mes[data-hoje]::after{content:"";position:absolute;top:7px;right:9px;width:6px;height:6px;border-radius:50%;background:var(--marca)}
+.per-mes[aria-pressed="true"],.per-tudo[aria-pressed="true"]{background:var(--marca);border-color:var(--marca);color:var(--sobre-marca)}
+.per-mes[aria-pressed="true"] small,.per-tudo[aria-pressed="true"] small{color:var(--sobre-marca)}
+.per-mes[aria-pressed="true"][data-hoje]::after{background:var(--sobre-marca)}
+.per-mes:active,.per-tudo:active{transform:scale(.94)}
+.per-tudo{flex-direction:row;justify-content:center;gap:8px;width:100%;margin-top:18px}
 /* ======================= SOBROU: movimento ======================= */
 #rapido-ok{transition:min-width .35s var(--mola-forte),width .35s var(--mola-forte),background .2s}
 #rapido-ok.carregando{color:transparent;position:relative}
@@ -821,7 +836,7 @@ body.desfocando .din{filter:blur(6px)}
       <h1 id="titulo">Olá</h1>
       <div class="periodo">
         <button type="button" data-acao="mes-ant" aria-label="Mês anterior">&#8249;</button>
-        <select id="sel-periodo" aria-label="Período"></select>
+        <button type="button" class="periodo-btn" id="btn-periodo" data-acao="periodo" aria-haspopup="dialog" aria-label="Escolher o mês"></button>
         <button type="button" data-acao="mes-prox" aria-label="Próximo mês">&#8250;</button>
       </div>
       <button type="button" class="icone-topo" id="btn-olho" data-acao="olho" aria-pressed="false" aria-label="Esconder valores"></button>

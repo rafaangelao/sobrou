@@ -6,6 +6,7 @@ import { BARRA, abaValida, posicaoNaBarra } from "./navegacao.js";
 import { telaInicio, folhaDetalhe } from "./telas/inicio.js";
 import { telaExtrato, listaExtrato, filtrarExtrato } from "./telas/extrato.js";
 import { telaMais, telaConta, voltarMais } from "./telas/mais.js";
+import { folhaPeriodo, rotuloPeriodo } from "./telas/periodo.js";
 import { porCategoria, NAO_CORTAR } from "./raiox.js";
 import { semMovimento, desenharFaixa, botaoCheck, comTransicao, arrastarParaFechar, ligarArrastarLinhas, trocarComDesfoque } from "./movimento.js";
 import { lerLinha } from "./rapido.js";
@@ -929,13 +930,7 @@ function render(){
   const periodos = periodosDisponiveis();
   if (ui.periodo !== "tudo" && !periodos.includes(ui.periodo)) ui.periodo = periodos[0];
 
-  const cont = contagemPorMes();
-  $("#sel-periodo").innerHTML =
-    periodos.map(p => {
-      const n = cont.get(p) || 0;
-      return `<option value="${p}"${p===ui.periodo?" selected":""}>${rotuloMes(p)}${n ? " · " + n : ""}</option>`;
-    }).join("") +
-    `<option value="tudo"${ui.periodo==="tudo"?" selected":""}>Todos os meses · ${estado.lancamentos.length}</option>`;
+  $("#btn-periodo").innerHTML = `<span>${rotuloPeriodo(ui.periodo)}</span>${iconeUI("seta", 14)}`;
 
   $("#titulo").textContent = TITULOS[ui.aba];
   $(".periodo").classList.toggle("oculto", SEM_PERIODO.includes(ui.aba));
@@ -1328,6 +1323,8 @@ document.addEventListener("click", ev => {
     }
     case "ir": ui.aba = abaValida(alvo.dataset.aba); fecharModal(); render(); window.scrollTo({ top:0, behavior:"smooth" }); break;
     case "lancar":        abrirLancar(); break;
+    case "periodo":       abrirFolha(folhaPeriodo({ periodos: periodosDisponiveis(), atual: ui.periodo, contagem: contagemPorMes(), total: estado.lancamentos.length, hoje: hoje() })); break;
+    case "escolher-periodo": ui.periodo = alvo.dataset.p; fecharModal(); render(); break;
     case "fechar-lancar": fecharLancar(); break;
     case "detalhe":       abrirDetalhe(alvo.dataset.tipo, alvo.dataset.chave, alvo.querySelector(".ic-cat")); break;
     case "todas-cats":    abrirTodasCats(); break;
@@ -1446,7 +1443,6 @@ document.addEventListener("click", ev => {
 });
 
 $("#estado").addEventListener("click", () => { if (!usuario) mostrarEntrar(); else sincronizar(); });
-$("#sel-periodo").addEventListener("change", e => { ui.periodo = e.target.value; render(); });
 
 document.addEventListener("input", ev => {
   if (ev.target.id === "busca-extrato"){
