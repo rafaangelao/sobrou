@@ -3,11 +3,13 @@
    na hora) e só usa a cópia guardada quando está offline.
    Fontes e a biblioteca do Supabase: têm versão fixa, então a cópia guardada vale.
    O que vai para o Supabase (dados e login) nunca passa por aqui. */
-const CACHE = "painel-v2";
+const CACHE = "painel-v3";
 const BASE = [
   "/", "/manifest.webmanifest",
   "/js/painel.js", "/js/base.js", "/js/config.js", "/js/fixas.js", "/js/juntar.js",
   "/js/nuvem.js", "/js/pareamento.js", "/js/rapido.js", "/js/sincronia.js",
+  "/js/formato.js", "/js/raiox.js", "/js/icones.js", "/js/navegacao.js", "/js/movimento.js",
+  "/js/telas/inicio.js", "/js/telas/extrato.js", "/js/telas/mais.js",
   "/icones/apple-touch-icon.png", "/icones/icone-192.png", "/icones/favicon.png",
 ];
 const FIXOS = ["https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://esm.sh"];

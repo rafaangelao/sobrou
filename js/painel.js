@@ -335,6 +335,8 @@ function blocoColunas(titulo, sub, barras, passo){
     </section>`;
 }
 
+const ROT_SIT = { "pago": "pago", "a-pagar": "a pagar", "atrasado": "atrasado" };
+
 function abaFixas(){
   const hj = hoje();
   const botao = `<button class="btn btn-forte" type="button" data-acao="nova-fixa">+ Nova fixa ou parcela</button>`;
@@ -388,6 +390,7 @@ function fxHTML(o){
     : `<button class="btn" type="button" data-acao="paguei" data-fixa="${o.fixa.id}" data-mes="${o.mes}">Paguei</button>`;
   return `
     <div class="fx">
+      ${iconeCat(o.fixa.categoria)}
       <div>
         <b>${esc(descricaoPagamento(o))}</b><span class="selo-sit" data-s="${o.situacao}">${ROT_SIT[o.situacao]}</span><br>
         <small>${esc(o.fixa.categoria)} · vence ${rotuloData(o.vencimento)}${termina}</small>

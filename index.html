@@ -794,6 +794,22 @@ body.ocultar .sem:focus::before{content:"R$ •••"}
 .din{transition:filter .16s ease}
 body.desfocando .din{filter:blur(6px)}
 ::view-transition-group(ic-detalhe){animation-duration:.4s;animation-timing-function:var(--mola-forte)}
+.fx{display:flex;align-items:center;gap:12px;padding:12px 0}
+.fx > div:first-of-type{flex:1;min-width:0}
+.fx b{font-size:15px}
+@media (min-width:720px){
+  .app{max-width:none;padding:0 24px 60px 124px}
+  .app > *{max-width:560px;margin-left:auto;margin-right:auto}
+  .app > .topo{margin-left:auto!important;margin-right:auto!important}
+  .barra-nav{top:0;bottom:0;right:auto;width:100px;display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:22px 10px;border-top:0;border-right:1px solid var(--linha);background:var(--papel)}
+  .barra-marca{display:block;order:-2;font-family:var(--fonte-marca);font-weight:700;font-size:18px;color:var(--marca-tinta);text-align:center;margin-bottom:14px}
+  .barra-mais{order:-1;width:auto;height:44px;border-radius:999px;display:flex;gap:6px;justify-content:center;margin-bottom:14px;font-weight:700}
+  .barra-mais span{display:inline}
+  .barra-mais svg{width:18px;height:18px}
+  .barra-ind{display:none}
+  .barra-it{padding:10px 0;border-radius:14px}
+  .barra-it[aria-current]{background:color-mix(in srgb,var(--marca) 14%,transparent)}
+}
 .oculto{display:none!important}
 </style>
 </head>
