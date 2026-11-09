@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filtrarExtrato, gruposPorDia, telaExtrato, listaExtrato, linhaExtrato } from "../js/telas/extrato.js";
+import { filtrarExtrato, gruposPorDia, telaExtrato, listaExtrato, linhaExtrato, filtroValido } from "../js/telas/extrato.js";
 import { brl } from "../js/formato.js";
 
 const L = (id, tipo, data, valor, descricao, categoria = "") => ({ id, tipo, data, valor, descricao, categoria });
@@ -48,4 +48,10 @@ test("tela: busca escapada, filtro marcado e filtro de categoria sumida volta pa
 test("tela vazia convida a lançar; filtro sem resultado avisa", () => {
   assert.match(telaExtrato({ itens: [], hoje: "2026-11-09", rotuloPeriodo: "em novembro" }), /Nada lançado em novembro/);
   assert.match(listaExtrato([], "2026-11-09", "pizza"), /Nada encontrado para “pizza”/);
+});
+test("filtro de categoria que não existe no mês volta para Tudo (a busca usa o mesmo)", () => {
+  assert.equal(filtroValido(ITENS, "cat:Lazer"), "tudo");
+  assert.equal(filtroValido(ITENS, "cat:Saúde"), "cat:Saúde");
+  assert.equal(filtroValido(ITENS, "entradas"), "entradas");
+  assert.equal(filtroValido([], "cat:Saúde"), "tudo");
 });

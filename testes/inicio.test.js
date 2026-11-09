@@ -75,3 +75,7 @@ test("detalhe da categoria não dá dica; Todos os meses não tem semanas; chave
   assert.doesNotMatch(folhaDetalhe({ lancamentos: DADOS, periodo: "tudo", hoje: HOJE, tipo: "lugar", chave: "ifood" }), /class="sem"/);
   assert.equal(folhaDetalhe({ lancamentos: DADOS, periodo: "2026-11", hoje: HOJE, tipo: "lugar", chave: "nada" }), null);
 });
+test("coluna da semana responde ao toque (iPhone não foca botão)", () => {
+  const h = folhaDetalhe({ lancamentos: DADOS, periodo: "2026-11", hoje: HOJE, tipo: "lugar", chave: "ifood" });
+  assert.equal((h.match(/class="sem"[^>]*data-acao="semana"/g) || []).length, 4);
+});

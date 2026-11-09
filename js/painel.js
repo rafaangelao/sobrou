@@ -1,10 +1,10 @@
 import { normalizar, RE_ENTRADA, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses, chaveComerciante } from "./base.js";
-import { MESES, DIAS_SEM, brl, brlCurto, pct, pctTxt, esc, rotuloMes, rotuloData, abrevMes, maiuscula } from "./formato.js";
+import { MESES, DIAS_SEM, brl, brlCurto, pct, pctTxt, esc, rotuloMes, rotuloData, abrevMes, maiuscula, din } from "./formato.js";
 import { estadoVazio, migrarV2, juntar, apagarLancamento } from "./juntar.js";
 import { corDe, iconeUI, iconeCat } from "./icones.js";
 import { BARRA, abaValida, posicaoNaBarra } from "./navegacao.js";
 import { telaInicio, folhaDetalhe } from "./telas/inicio.js";
-import { telaExtrato, listaExtrato, filtrarExtrato } from "./telas/extrato.js";
+import { telaExtrato, listaExtrato, filtrarExtrato, filtroValido } from "./telas/extrato.js";
 import { telaMais, telaConta, voltarMais } from "./telas/mais.js";
 import { folhaPeriodo, rotuloPeriodo } from "./telas/periodo.js";
 import { porCategoria, NAO_CORTAR } from "./raiox.js";
@@ -879,8 +879,8 @@ function fixasAPagar(){
 
 const TELAS = {
   inicio:     () => telaInicio({ lancamentos: estado.lancamentos, periodo: ui.periodo, hoje: hoje(), fixas: fixasAPagar() }),
-  extrato:    () => telaExtrato({ itens: doPeriodo(), hoje: hoje(), busca: ui.busca, filtro: ui.filtro,
-                                  rotuloPeriodo: ui.periodo === "tudo" ? "ainda" : "em " + MESES[+ui.periodo.slice(5) - 1] }),
+  extrato:    () => (ui.filtro = filtroValido(doPeriodo(), ui.filtro), telaExtrato({ itens: doPeriodo(), hoje: hoje(), busca: ui.busca, filtro: ui.filtro,
+                                  rotuloPeriodo: ui.periodo === "tudo" ? "ainda" : "em " + MESES[+ui.periodo.slice(5) - 1] })),
   fixas:      () => abaFixas(),
   mais:       () => telaMais(),
   economizar: () => voltarMais() + abaEconomizar(),
@@ -1225,6 +1225,7 @@ function confirmar(titulo, texto, aoConfirmar){
         </div>
       </div>
     </div>`;
+  marcarValores($("#modal"));
   const ok = $("#ok-confirmar");
   ok.focus();
   ok.addEventListener("click", () => { fecharModal(); aoConfirmar(); });
@@ -1323,6 +1324,12 @@ document.addEventListener("click", ev => {
     }
     case "ir": ui.aba = abaValida(alvo.dataset.aba); fecharModal(); render(); window.scrollTo({ top:0, behavior:"smooth" }); break;
     case "lancar":        abrirLancar(); break;
+    case "semana": {       /* iPhone não foca botão no toque: o valor aparece por aria-pressed */
+      const ligado = alvo.getAttribute("aria-pressed") === "true";
+      alvo.closest(".semanas").querySelectorAll(".sem").forEach(s => s.setAttribute("aria-pressed", "false"));
+      alvo.setAttribute("aria-pressed", String(!ligado));
+      break;
+    }
     case "periodo":       abrirFolha(folhaPeriodo({ periodos: periodosDisponiveis(), atual: ui.periodo, contagem: contagemPorMes(), total: estado.lancamentos.length, hoje: hoje() })); break;
     case "escolher-periodo": ui.periodo = alvo.dataset.p; fecharModal(); render(); break;
     case "fechar-lancar": fecharLancar(); break;
@@ -1459,12 +1466,12 @@ document.addEventListener("input", ev => {
     const cats = porCategoria(gastosDe(doPeriodo())).filter(c => !NAO_CORTAR.includes(c.nome));
     const c = cats.find(x => x.nome === nome);
     const res = document.querySelector(`[data-res="${CSS.escape(nome)}"]`);
-    if (res && c) res.textContent = p ? "−" + pctTxt(p) + " · " + brl(c.total*p/100) : "manter";
+    if (res && c) res.innerHTML = p ? "−" + pctTxt(p) + " · " + din(c.total*p/100) : "manter";
     const total = cats.reduce((t,x) => t + x.total * ((ui.cortes[x.nome]||0)/100), 0);
-    $("#sim-mes").textContent = brl(total);
-    $("#sim-ano").textContent = brl(total*12);
+    $("#sim-mes").innerHTML = din(total);
+    $("#sim-ano").innerHTML = din(total*12);
     $("#sim-nota").innerHTML = total
-      ? "Guardando isso todo mês, em um ano são <b>" + brl(total*12) + "</b>."
+      ? "Guardando isso todo mês, em um ano são <b>" + din(total*12) + "</b>."
       : "Arraste alguma barra pra ver o efeito.";
     return;
   }

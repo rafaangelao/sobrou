@@ -720,8 +720,8 @@ body{font-variant-numeric:tabular-nums}
 .semanas{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;height:120px;align-items:end;margin:18px 0 8px}
 .sem{position:relative;height:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;background:none;border:0;padding:0;cursor:pointer;color:var(--tinta-3);font-size:11.5px}
 .sem i{display:block;height:max(4px,calc(var(--h) * .8));border-radius:6px 6px 2px 2px;background:var(--marca);opacity:.8;transform-origin:bottom}
-.sem:focus i,.sem:active i{opacity:1}
-.sem:focus::before{content:attr(data-v);position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:var(--tinta);color:var(--sobre-marca);font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:8px;white-space:nowrap}
+.sem:focus i,.sem:active i,.sem[aria-pressed="true"] i{opacity:1}
+.sem:focus::before,.sem[aria-pressed="true"]::before{content:attr(data-v);position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:var(--tinta);color:var(--sobre-marca);font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:8px;white-space:nowrap}
 .det-item{display:flex;justify-content:space-between;gap:12px;width:100%;padding:11px 2px;background:none;border:0;border-bottom:1px solid var(--linha);color:inherit;font-size:14px;cursor:pointer;text-align:left}
 .dica{display:flex;gap:8px;align-items:flex-start;margin:14px 0 0;padding:12px 14px;border-radius:12px;background:var(--marca-suave);color:var(--marca-tinta);font-size:13.5px}
 .folha-lancar .rapido{display:flex;gap:8px;margin:0}
@@ -781,7 +781,7 @@ body{font-variant-numeric:tabular-nums}
 body.ocultar .din{color:transparent!important;position:relative;white-space:nowrap}
 body.ocultar .din::after{content:"R$ •••";position:absolute;left:0;top:0;color:var(--tinta-2)}
 body.ocultar .heroi-val.din::after,body.ocultar .det-total.din::after{color:var(--tinta)}
-body.ocultar .sem:focus::before{content:"R$ •••"}
+body.ocultar .sem:focus::before,body.ocultar .sem[aria-pressed="true"]::before{content:"R$ •••"}
 /* escolher o mês */
 .topo .periodo .periodo-btn{display:inline-flex;align-items:center;gap:6px;min-width:0;padding:8px 10px;border-radius:999px;font-size:14px;font-weight:600;color:var(--tinta);background:var(--superficie)}
 .periodo-btn span{white-space:nowrap}

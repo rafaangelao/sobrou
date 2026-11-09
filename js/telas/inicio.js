@@ -84,7 +84,7 @@ export function folhaDetalhe({ lancamentos, periodo, hoje, tipo, chave }){
   const maior = sem ? Math.max(...sem.map(s => s.total), 0) : 0;
   const dica = dicaCorte(lugar);
   const semanas = !sem ? "" : `<div class="semanas">${sem.map((s, i) =>
-    `<button type="button" class="sem" style="--h:${maior ? (s.total / maior * 100).toFixed(1) : 0}%;--k:${i}" data-v="${esc(brl(s.total))}" aria-label="${s.rot}: ${esc(brl(s.total))}"><i></i><span>${s.rot}</span></button>`).join("")}</div>`;
+    `<button type="button" class="sem" data-acao="semana" aria-pressed="false" style="--h:${maior ? (s.total / maior * 100).toFixed(1) : 0}%;--k:${i}" data-v="${esc(brl(s.total))}" aria-label="${s.rot}: ${esc(brl(s.total))}"><i></i><span>${s.rot}</span></button>`).join("")}</div>`;
 
   return `
   <div class="folha folha-detalhe" role="dialog" aria-modal="true" aria-labelledby="det-tit">
