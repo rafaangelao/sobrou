@@ -1,6 +1,6 @@
 import { normalizar, RE_ENTRADA, mesDe, diasNoMes, hojeLocal, somarDias, somarMeses, chaveComerciante } from "./base.js";
 import { MESES, DIAS_SEM, brl, brlCurto, pct, pctTxt, esc, rotuloMes, rotuloData, abrevMes, maiuscula } from "./formato.js";
-import { estadoVazio, migrarV2, juntar } from "./juntar.js";
+import { estadoVazio, migrarV2, juntar, apagarLancamento } from "./juntar.js";
 import { corDe } from "./icones.js";
 import { porCategoria, NAO_CORTAR } from "./raiox.js";
 import { lerLinha } from "./rapido.js";
@@ -1423,9 +1423,7 @@ document.addEventListener("click", ev => {
       const l = estado.lancamentos.find(x => x.id === alvo.dataset.id);
       if (!l) break;
       confirmar("Apagar lançamento?", `<b>${esc(l.descricao)}</b> — ${brl(l.valor)} em ${rotuloData(l.data)}. Isso não volta.`, () => {
-        estado.apagados[l.id] = Date.now();
-        estado.lancamentos = estado.lancamentos.filter(x => x.id !== l.id);
-        mudou(); torrada("Lançamento apagado.");
+        if (apagarLancamento(estado, l.id, Date.now())){ mudou(); torrada("Lançamento apagado."); }
       });
       break;
     }
@@ -1471,8 +1469,7 @@ document.addEventListener("click", ev => {
       ultimoToqueFixa = Date.now();
       const l = estado.lancamentos.find(x => x.fixaId === alvo.dataset.fixa && x.fixaMes === alvo.dataset.mes);
       if (!l) break;
-      estado.lancamentos = estado.lancamentos.filter(x => x.id !== l.id);
-      estado.apagados[l.id] = Date.now();
+      apagarLancamento(estado, l.id, Date.now());
       mudou(); torrada("Pronto, voltou pra a pagar.");
       break;
     }

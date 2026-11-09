@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { estadoVazio, migrarV2, juntar } from "../js/juntar.js";
+import { estadoVazio, migrarV2, juntar, apagarLancamento } from "../js/juntar.js";
 
 const L = (id, editadoEm, extra = {}) => ({ id, tipo:"gasto", data:"2026-11-01", categoria:"Lazer", descricao:id, valor:10, editadoEm, ...extra });
 const base = (over = {}) => ({ ...estadoVazio(100), ...over });
@@ -98,4 +98,20 @@ test("idempotente", () => {
   const j = juntar(a, b);
   assert.deepEqual(juntar(a, j), j);
   assert.deepEqual(juntar(j, j), j);
+});
+
+test("apagarLancamento tira o item e marca em apagados", () => {
+  const e = estadoVazio(1);
+  e.lancamentos.push({ id:"x", tipo:"gasto", data:"2026-11-09", valor:35, descricao:"ifood", categoria:"Outros", editadoEm:1 });
+  assert.equal(apagarLancamento(e, "x", 50), true);
+  assert.equal(e.lancamentos.length, 0);
+  assert.equal(e.apagados.x, 50);
+  assert.equal(apagarLancamento(e, "nao-existe", 60), false);
+});
+test("desfazer depois que a nuvem já tem o lançamento: ele não volta", () => {
+  const item = { id:"x", tipo:"gasto", data:"2026-11-09", valor:35, descricao:"ifood", categoria:"Outros", editadoEm:10 };
+  const nuvem = estadoVazio(1); nuvem.lancamentos.push({ ...item });
+  const local = estadoVazio(1); local.lancamentos.push({ ...item });
+  apagarLancamento(local, "x", 20);
+  assert.equal(juntar(local, nuvem).lancamentos.some(l => l.id === "x"), false);
 });

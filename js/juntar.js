@@ -53,3 +53,12 @@ export function juntar(local, nuvem){
     regrasEm: regrasDe.regrasEm || 0,
   };
 }
+
+/* apagar de verdade: a marca em `apagados` impede que a nuvem traga o item de volta */
+export function apagarLancamento(estado, id, agora){
+  const antes = estado.lancamentos.length;
+  estado.lancamentos = estado.lancamentos.filter(l => l.id !== id);
+  if (estado.lancamentos.length === antes) return false;
+  estado.apagados[id] = agora;
+  return true;
+}
